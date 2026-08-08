@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0f1a" />
+  <title>Szkolny Warsztat 3D</title>
+  <meta name="description" content="System zamówień wydruków 3D dla społeczności szkolnej. Zamów własny wydruk już dziś!" />
+  <link rel="icon" type="image/x-icon" href="favicon.ico" />
+  <link rel="apple-touch-icon" href="logo.png" />
+
+  <!-- ============================================================
+       T A I L W I N D  (CDN Play) - klasy narzędziowe
+       ============================================================ -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Segoe UI', 'system-ui', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif']
+          },
+          colors: {
+            // Paleta technologiczna (ciemny motyw)
+            base: '#0b0f1a',
+            panel: '#121826',
+            accent: '#38bdf8',
+            neon: '#22d3ee'
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- ============================================================
+       F I R E B A S E  (Compat SDK - Realtime Database)
+       ============================================================ -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+</head>
+
+<body class="bg-base text-slate-200 font-sans min-h-screen">
+
+  <!-- ============================================================
+       K O N F I G U R A C J A  F I R E B A S E
+       Wklej tutaj swoje dane z konsoli Firebase (projekt maslo-3d).
+       Baza działa w trybie publicznym (bez logowania).
+       ============================================================ -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "WSTAW_TU_API_KEY",
+      authDomain: "maslo-3d.firebaseapp.com",
+      databaseURL: "https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "maslo-3d",
+      storageBucket: "maslo-3d.appspot.com",
+      messagingSenderId: "WSTAW_TU_SENDER_ID",
+      appId: "WSTAW_TU_APP_ID"
+    };
+    // Inicjalizacja aplikacji Firebase + Realtime Database
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+  </script>
+
+  <!-- ============================================================
+       L O G I K A  A P L I K A C J I
+       ============================================================ -->
+  <script>
+    'use strict';
+
+    /* ------------------------------------------------------------------
+       STAŁE I POMOCNICZE FUNKCJE
+       ------------------------------------------------------------------ */
+
+    // Kolejne etapy realizacji zamówienia (kolejność w stepperze)
+    const STATUSES = ['W kolejce', 'Drukuje się', 'W drodze', 'Doręczone'];
+
+    // Powody anulowania zamówienia (ochrona przed trollami)
+    const CANCEL_REASONS = [
+      'Zamówienie trolowskie / Fałszywe',
+      'Brak materiału (Filamentu)',
+      'Błąd wydruku / Awaria drukarki',
+      'Inny powód'
+    ];
+
+    // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
+    let products = {}; // id -> {name, desc, price, stock, image}
+    let orders = {};   // id -> {name, className, productId, productName, qty, price, status, queuedBacklog, createdAt, isDeleted, deleteReason}
+
+    // Escapowanie HTML - ochrona przed XSS (dane wpisywane przez użytkowników)
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // Formatowanie ceny w złotówkach (polski separator dziesiętny)
+    function fmtPrice(p) {
+      return Number(p || 0).toFixed(2).replace('.', ',') + ' zł';
+    }
+
+    // Formatowanie daty (lokalne, polskie)
+    function fmtDate(ts) {
+      if (!ts) return '—';
+      return new Date(ts).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    // Generowanie unikalnego identyfikatora UUID (fallback dla starych przeglądarek)
+    function genUUID() {
+      if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+      }
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    // Krótki wariant ID do wyświetlenia w tabeli (8 pierwszych znaków)
+    function shortId(id) {
+      return String(id).slice(0, 8);
+    }
+
+    // Pełny link śledzenia dla danego zamówienia
+    function trackingLink(orderId) {
+      return window.location.origin + window.location.pathname + '?orderId=' + orderId;
+    }
+
+    // Kopiowanie tekstu do schowka (z obsługą starszych przeglądarek)
+    function copyText(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(function () { return true; });
+      }
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) { /* ignoruj */ }
+      document.body.removeChild(ta);
+      return Promise.resolve(true);
+    }
+
+    // Kolor akcentu dla danego statusu (karty kolorów)
+    function statusColor(status) {
+      const map = {
+        'W kolejce': 'text-amber-300 border-amber-400/30 bg-amber-400/10',
+        'Drukuje się': 'text-cyan-300 border-cyan-400/30 bg-cyan-400/10',
+        'W drodze': 'text-violet-300 border-violet-400/30 bg-violet-400/10',
+        'Doręczone': 'text-emerald-300 border-emerald-400/30 bg-emerald-400/10'
+      };
+      return map[status] || 'text-slate-300 border-slate-400/30 bg-slate-400/10';
+    }
+
+    /* ------------------------------------------------------------------
+       ROUTER - decyduje, który widok pokazać na podstawie parametrów URL
+       ------------------------------------------------------------------ */
+    function route() {
+      const params = new URLSearchParams(window.location.search);
+      const orderId = params.get('orderId');
+      const isAdmin = params.get('admin') === 'true';
+
+      document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
+
+      if (orderId) {
+        document.getElementById('view-tracking').classList.remove('hidden');
+        initTracking(orderId);
+      } else if (isAdmin) {
+        document.getElementById('view-admin').classList.remove('hidden');
+        initAdmin();
+      } else {
+        document.getElementById('view-shop').classList.remove('hidden');
+        renderShop();
+      }
+    }
+
+    /* ------------------------------------------------------------------
+       REALTIME LISTENERS - nasłuch na produkty i zamówienia
+       ------------------------------------------------------------------ */
+    function startListeners() {
+      // Produkty - na żywo
+      db.ref('products').on('value', function (snap) {
+        products = snap.val() || {};
+        renderShop();
+        // Jeśli admin jest otwarty, przelicz statystyki i listę produktów
+        if (document.getElementById('view-admin') && !document.getElementById('view-admin').classList.contains('hidden')) {
+          renderAdmin();
+        }
+      });
+
+      // Zamówienia - na żywo
+      db.ref('orders').on('value', function (snap) {
+        orders = snap.val() || {};
+        // Odśwież widok śledzenia, jeśli jest otwarty
+        const params = new URLSearchParams(window.location.search);
+        const orderId = params.get('orderId');
+        if (orderId) initTracking(orderId);
+        // Odśwież panel admina, jeśli otwarty
+        if (document.getElementById('view-admin') && !document.getElementById('view-admin').classList.contains('hidden')) {
+          renderAdmin();
+        }
+      });
+    }
+
+    /* ==================================================================
+       W I D O K   1:  WITRYNA SKLEPOWA (dla uczniów)
+       ================================================================== */
+
+    function renderShop() {
+      const grid = document.getElementById('shop-grid');
+      const keys = Object.keys(products);
+      grid.innerHTML = '';
+
+      if (keys.length === 0) {
+        grid.innerHTML =
+          '<div class="col-span-full text-center py-16 text-slate-400">' +
+          '  <p class="text-lg">Brak ofert w sklepie.</p>' +
+          '  <p class="text-sm mt-1">Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.</p>' +
+          '</div>';
+        return;
+      }
+
+      keys.forEach(function (id) {
+        const p = products[id];
+        if (!p) return;
+
+        const outOfStock = !p.stock || p.stock <= 0;
+        const card = document.createElement('div');
+        card.className =
+          'bg-panel border border-white/5 rounded-2xl overflow-hidden shadow-xl ' +
+          'hover:border-accent/40 hover:shadow-accent/10 transition-all flex flex-col';
+        card.innerHTML =
+          productImageHtml(p) +
+          '<div class="p-5 flex flex-col flex-1">' +
+          '  <div class="flex items-start justify-between gap-2">' +
+          '    <h3 class="text-lg font-semibold text-white">' + esc(p.name) + '</h3>' +
+          '    <span class="text-accent font-bold whitespace-nowrap text-lg">' + fmtPrice(p.price) + '</span>' +
+          '  </div>' +
+          '  <p class="text-sm text-slate-400 mt-2 flex-1">' + esc(p.desc) + '</p>' +
+          '  <div class="mt-4">' +
+          (outOfStock
+            ? '<span class="inline-block text-xs font-bold uppercase tracking-wide text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1">Brak w magazynie</span>'
+            : '<span class="inline-block text-xs text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1">Dostępne: ' + p.stock + ' szt.</span>') +
+          '  </div>' +
+          '  <button data-order-id="' + id + '" data-name="' + esc(p.name) + '"' +
+          '    data-price="' + p.price + '" data-stock="' + p.stock + '" data-desc="' + esc(p.desc) + '"' +
+          '    class="mt-4 w-full py-2.5 rounded-xl font-semibold text-base transition-all ' +
+          '    bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20">Zamów</button>' +
+          '</div>';
+
+        grid.appendChild(card);
+      });
+
+      // Obsługa kliknięcia przycisku "Zamów" - otwiera formularz zamówienia
+      grid.querySelectorAll('[data-order-id]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          openOrderForm(btn);
+        });
+      });
+    }
+
+    // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
+    function productImageHtml(p) {
+      if (p.image && p.image.length > 20) {
+        return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
+          '  <img src="' + esc(p.image) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
+          '</div>';
+      }
+      // Brak zdjęcia - przyjazny placeholder
+      return '<div class="aspect-square w-full flex items-center justify-center bg-gradient-to-br from-panel to-base text-slate-600">' +
+        '  <svg class="w-16 h-16" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">' +
+        '    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />' +
+        '  </svg>' +
+        '</div>';
+    }
+
+    /* --- Formularz zamówienia (modal) --- */
+    let currentOrderProduct = null;
+
+    function openOrderForm(btn) {
+      currentOrderProduct = {
+        id: btn.dataset.orderId,
+        name: btn.dataset.name,
+        price: Number(btn.dataset.price),
+        stock: Number(btn.dataset.stock),
+        desc: btn.dataset.desc
+      };
+      document.getElementById('order-form').classList.remove('hidden');
+      // Reset formularza
+      document.getElementById('order-form').querySelector('form').reset();
+      document.getElementById('order-message').innerHTML = '';
+      document.getElementById('order-qty').max = Math.max(currentOrderProduct.stock, 1);
+      document.getElementById('order-form-title').textContent = 'Zamówienie: ' + currentOrderProduct.name;
+    }
+
+    function closeOrderForm() {
+      document.getElementById('order-form').classList.add('hidden');
+    }
+
+    function handleOrderSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('order-name').value.trim();
+      const className = document.getElementById('order-class').value.trim();
+      const qty = parseInt(document.getElementById('order-qty').value, 10) || 1;
+      const msgBox = document.getElementById('order-message');
+
+      if (!name) {
+        msgBox.innerHTML = '<p class="text-red-300 text-sm">Podaj swoje imię.</p>';
+        return;
+      }
+      if (!currentOrderProduct) return;
+      if (qty < 1) {
+        msgBox.innerHTML = '<p class="text-red-300 text-sm">Podaj poprawna ilość (min. 1).</p>';
+        return;
+      }
+
+      placeOrder(currentOrderProduct, name, className, qty, msgBox);
+    }
+
+    // Zapisuje zamówienie w Firebase i pokazuje kartę podsumowania z linkiem
+    function placeOrder(product, name, className, qty, msgBox) {
+      const orderId = genUUID();
+      const available = product.stock > 0;
+      // Zamówienie trafia do kolejki, gdy brakuje towaru lub ilość przekracza stan
+      const queuedBacklog = !available || qty > product.stock;
+
+      // Odejmij sztuki z magazynu (tylko tyle, ile jest dostępne)
+      const decrement = Math.min(qty, product.stock);
+
+      const payload = {
+        name: name,
+        className: className || '',
+        productId: product.id,
+        productName: product.name,
+        qty: qty,
+        price: product.price, // cena jednostkowa w momencie zamówienia
+        status: 'W kolejce',
+        queuedBacklog: queuedBacklog, // flaga "BRAK W MAGAZYNIE"
+        createdAt: Date.now(),
+        isDeleted: false,
+        deleteReason: ''
+      };
+
+      const updates = {};
+      updates['/orders/' + orderId] = payload;
+      // Odejmij z magazynu, jesli byl dostępny towar
+      if (decrement > 0) {
+        updates['/products/' + product.id + '/stock'] = product.stock - decrement;
+      }
+
+      db.ref().update(updates)
+        .then(function () {
+          showOrderConfirmation(orderId, name, payload, queuedBacklog);
+        })
+        .catch(function (err) {
+          if (msgBox) msgBox.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
+        });
+    }
+
+    // Karta podsumowania z unikalnym linkiem do śledzenia
+    function showOrderConfirmation(orderId, name, payload, backlog) {
+      const wrap = document.getElementById('order-summary');
+      const link = trackingLink(orderId);
+      wrap.classList.remove('hidden');
+      wrap.innerHTML =
+        '<div class="text-center">' +
+        '  <div class="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mb-4">' +
+        '    <svg class="w-8 h-8 text-emerald-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+        '      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />' +
+        '    </svg>' +
+        '  </div>' +
+        '  <h3 class="text-2xl font-bold text-white">Dziękujemy, ' + esc(name) + '!</h3>' +
+        '  <p class="text-slate-400 mt-1">Twoje zamówienie zostało przyjęte.</p>' +
+        (backlog
+          ? '<p class="mt-3 text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-2 text-sm font-semibold">BRAK W MAGAZYNIE - zamawiajac, trafiasz do kolejki oczekujacych</p>'
+          : '') +
+        '  <div class="mt-5 text-left bg-base/60 border border-white/10 rounded-xl p-4">' +
+        '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Twoj unikalny link śledzenia</p>' +
+        '    <div class="flex items-center gap-2">' +
+        '      <input type="text" readonly value="' + esc(link) + '" class="flex-1 bg-panel border border-white/10 rounded-lg px-3 py-2 text-sm text-accent" onfocus="this.select()" />' +
+        '      <button onclick="copyText(\'' + esc(link) + '\').then(function(){ this.dataset.done=\"1\"; this.textContent=\"Skopiowano\"; }.bind(this))"' +
+        '        class="shrink-0 bg-accent hover:bg-sky-400 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm">Kopiuj link</button>' +
+        '    </div>' +
+        '    <p class="text-xs text-slate-500 mt-2">Zapisz ten link - pozwoli Ci śledzić status wydruku. Możesz go też przekazać opiekunowi warsztatu.</p>' +
+        '  </div>' +
+        '  <a href="' + link + '" class="mt-5 inline-block bg-accent hover:bg-sky-400 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all">Śledź zamówienie</a>' +
+        '</div>';
+
+      // Przewin do karty podsumowania
+      wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    /* ==================================================================
+       W I D O K   2:  EKRAN ŚLEDZENIA ZAMÓWIENIA (?orderId=UUID)
+       ================================================================== */
+
+    let trackingSubscribedId = null;
+
+    function initTracking(orderId) {
+      // Podepnij listener tylko raz dla danego ID
+      if (trackingSubscribedId !== orderId) {
+        if (trackingSubscribedId) db.ref('orders/' + trackingSubscribedId).off('value');
+        trackingSubscribedId = orderId;
+
+        db.ref('orders/' + orderId).on('value', function (snap) {
+          renderTracking(snap.val(), orderId);
+        });
+      } else {
+        // Odśwież z lokalnego stanu (jeśli już podpięte)
+        renderTracking(orders[orderId] || null, orderId);
+      }
+    }
+
+    function renderTracking(order, orderId) {
+      const box = document.getElementById('tracking-box');
+
+      // Zamówienie anulowane lub usunięte
+      if (!order || order.isDeleted) {
+        const reason = order && order.deleteReason ? order.deleteReason : '';
+        box.innerHTML =
+          '<div class="text-center max-w-md mx-auto">' +
+          '  <div class="mx-auto w-16 h-16 rounded-full bg-red-500/20 border border-red-400/40 flex items-center justify-center mb-4">' +
+          '    <svg class="w-8 h-8 text-red-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+          '      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />' +
+          '    </svg>' +
+          '  </div>' +
+          '  <h2 class="text-xl font-bold text-white">Zamówienie nie istnieje lub zostało anulowane przez administratora</h2>' +
+          (reason ? '<p class="mt-3 text-sm text-slate-400 bg-red-400/10 border border-red-400/30 rounded-xl px-4 py-3">Powod anulowania: <span class="text-red-300 font-semibold">' + esc(reason) + '</span></p>' : '') +
+          '  <a href="' + window.location.pathname + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">Wroc do sklepu</a>' +
+          '</div>';
+        return;
+      }
+
+      // Indeks bieżącego statusu w stepperze
+      const idx = STATUSES.indexOf(order.status);
+      const current = idx < 0 ? 0 : idx;
+
+      let stepsHtml = '';
+      STATUSES.forEach(function (s, i) {
+        const done = i < current;
+        const active = i === current;
+        stepsHtml +=
+          '<div class="flex-1 relative">' +
+          '  <div class="flex flex-col items-center">' +
+          '    <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ' +
+          (done
+            ? 'bg-emerald-500 text-slate-900'
+            : active
+              ? 'bg-accent text-slate-900 ring-4 ring-accent/30'
+              : 'bg-panel border border-white/10 text-slate-500') +
+          '">' +
+          (done
+            ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>'
+            : (i + 1)) +
+          '  </div>' +
+          '  <p class="mt-2 text-xs font-semibold ' + (active ? 'text-accent' : 'text-slate-400') + '">' + s + '</p>' +
+          '  </div>' +
+          (i < STATUSES.length - 1
+            ? '<div class="absolute top-5 left-1/2 right-auto -translate-y-1/2 h-0.5 ' + (done ? 'bg-emerald-500' : 'bg-white/10') + '" style="width:100%; transform:translate(0,-50%)"></div>'
+            : '') +
+          '</div>';
+      });
+
+      box.innerHTML =
+        '<div class="max-w-lg mx-auto">' +
+        '  <div class="text-center mb-6">' +
+        '    <h2 class="text-2xl font-bold text-white">Status zamówienia</h2>' +
+        '    <p class="text-slate-400 mt-1">ID: ' + esc(shortId(orderId)) + '</p>' +
+        '  </div>' +
+        '  <div class="bg-panel border border-white/10 rounded-2xl p-5 mb-5">' +
+        '    <div class="flex items-center justify-between">' +
+        '      <div>' +
+        '        <p class="text-lg font-semibold text-white">' + esc(order.name) + '</p>' +
+        '        <p class="text-sm text-slate-400">' + (order.className ? 'Klasa: ' + esc(order.className) : '') + '</p>' +
+        '      </div>' +
+        '      <span class="text-sm font-bold ' + statusColor(order.status).split(' ')[0] + '">' + esc(order.status) + '</span>' +
+        '    </div>' +
+        '    <div class="mt-3 border-t border-white/10 pt-3 text-sm">' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">Produkt</span><span class="text-white">' + esc(order.productName) + '</span></div>' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">Ilość</span><span class="text-white">' + order.qty + ' szt.</span></div>' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">Cena</span><span class="text-white">' + fmtPrice(order.qty * order.price) + '</span></div>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="bg-panel border border-white/10 rounded-2xl p-5">' +
+        '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-4">Postep realizacji</p>' +
+        '    <div class="flex">' + stepsHtml + '</div>' +
+        '  </div>' +
+        '  <div class="text-center mt-6">' +
+        '    <a href="' + window.location.pathname + '" class="inline-block text-accent hover:text-sky-300 font-semibold">Wroc do sklepu</a>' +
+        '  </div>' +
+        '</div>';
+    }
+
+    /* ==================================================================
+       W I D O K   3:  PANEL ADMINISTRATORA (?admin=true)
+       ================================================================== */
+
+    // Przechowuje ID produktu w trybie edycji (null = dodawanie nowego)
+    let editingProductId = null;
+
+    function initAdmin() {
+      renderAdmin();
+      // Zabezpieczenie formularza dodawania produktu przed przeładowaniem
+      const form = document.getElementById('admin-product-form');
+      if (form && !form.dataset.bound) {
+        form.dataset.bound = '1';
+        form.addEventListener('submit', handleProductSubmit);
+      }
+      // Listener wyboru pliku (kompresja zdjęcia)
+      const fileInput = document.getElementById('product-image');
+      if (fileInput && !fileInput.dataset.bound) {
+        fileInput.dataset.bound = '1';
+        fileInput.addEventListener('change', handleImageSelect);
+      }
+    }
+
+    // Renderuje cały panel: statystyki, produkty, zamówienia
+    function renderAdmin() {
+      renderStats();
+      renderAdminProducts();
+      renderAdminOrders();
+    }
+
+    /* --- Statystyki na żywo --- */
+    function renderStats() {
+      let total = 0, printing = 0, queued = 0, deliveredQty = 0, revenue = 0;
+
+      Object.values(orders).forEach(function (o) {
+        if (!o || o.isDeleted) return;
+        total++;
+        if (o.status === 'Drukuje się') printing++;
+        if (o.status === 'W kolejce') queued++;
+        if (o.status === 'Doręczone') {
+          deliveredQty += (o.qty || 0);
+          revenue += (o.qty || 0) * (o.price || 0);
+        }
+      });
+
+      setStat('stat-total', total);
+      setStat('stat-printing', printing);
+      setStat('stat-queued', queued);
+      setStat('stat-delivered', deliveredQty);
+      setStat('stat-revenue', fmtPrice(revenue));
+    }
+
+    function setStat(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val;
+    }
+
+    /* --- Zarządzanie produktami --- */
+    function renderAdminProducts() {
+      const list = document.getElementById('admin-products');
+      const keys = Object.keys(products);
+      list.innerHTML = '';
+
+      if (keys.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm">Brak produktow. Dodaj pierwsza oferte poniżej.</p>';
+        return;
+      }
+
+      keys.forEach(function (id) {
+        const p = products[id];
+        if (!p) return;
+        const row = document.createElement('div');
+        row.className = 'flex flex-col sm:flex-row sm:items-center gap-3 bg-base/50 border border-white/10 rounded-xl p-3';
+        row.innerHTML =
+          '<div class="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-black/40">' +
+          (p.image && p.image.length > 20
+            ? '<img src="' + esc(p.image) + '" class="w-full h-full object-cover" alt="" />'
+            : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
+          '</div>' +
+          '<div class="flex-1 min-w-0">' +
+          '  <p class="font-semibold text-white truncate">' + esc(p.name) + '</p>' +
+          '  <p class="text-sm text-slate-400">' + fmtPrice(p.price) + '</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-2">' +
+          '  <label class="text-xs text-slate-400">Stan</label>' +
+          '  <input type="number" min="0" value="' + (p.stock || 0) + '" data-stock-id="' + id + '" class="w-20 bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center" />' +
+          '  <button data-save-stock="' + id + '" class="bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg">Zapisz</button>' +
+          '</div>' +
+          '<div class="flex items-center gap-2">' +
+          '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-sm px-2 py-1">Edytuj</button>' +
+          '  <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Usuń</button>' +
+          '</div>';
+
+        list.appendChild(row);
+      });
+
+      // Zapis stanu magazynowego
+      list.querySelectorAll('[data-save-stock]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const id = btn.dataset.saveStock;
+          const input = list.querySelector('[data-stock-id="' + id + '"]');
+          const val = parseInt(input.value, 10);
+          if (isNaN(val) || val < 0) { alert('Podaj poprawny stan (0 lub więcej).'); return; }
+          db.ref('products/' + id + '/stock').set(val)
+            .then(function () { flash('Stan magazynowy zaktualizowany.'); })
+            .catch(function (e) { alert('Błąd: ' + e.message); });
+        });
+      });
+
+      // Usuwanie produktu
+      list.querySelectorAll('[data-del-product]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const id = btn.dataset.delProduct;
+          if (confirm('Na pewno usunąć ten produkt?')) {
+            db.ref('products/' + id).remove()
+              .then(function () { flash('Produkt usunięty.'); })
+              .catch(function (e) { alert('Błąd: ' + e.message); });
+          }
+        });
+      });
+
+      // Edycja produktu (wypełnia formularz)
+      list.querySelectorAll('[data-edit-product]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const id = btn.dataset.editProduct;
+          loadProductIntoForm(id);
+        });
+      });
+    }
+
+    // Kompresja i konwersja zdjęcia do Base64 (WebP/JPEG) - max 600px, jakosc 0.6
+    function handleImageSelect(e) {
+      const file = e.target.files[0];
+      const preview = document.getElementById('product-image-preview');
+      const info = document.getElementById('product-image-info');
+      if (!file) return;
+
+      if (!file.type.startsWith('image/')) {
+        alert('Wybierz plik graficzny (JPG, PNG, WebP...).');
+        e.target.value = '';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function (ev) {
+        const img = new Image();
+        img.onload = function () {
+          // Ogranicz szerokosc do 600px
+          const MAX = 600;
+          let width = img.width, height = img.height;
+          if (width > MAX) {
+            height = Math.round(height * MAX / width);
+            width = MAX;
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Konwersja do WebP (fallback: JPEG) z jakoscia 0.6
+          let dataUrl;
+          try {
+            dataUrl = canvas.toDataURL('image/webp', 0.6);
+            if (!dataUrl || dataUrl.length < 50) throw new Error('no-webp');
+          } catch (err) {
+            dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+          }
+
+          // Zapisz skompresowany ciag Base64 w polu ukrytym
+          document.getElementById('product-image-data').value = dataUrl;
+
+          // Podgląd + informacja o rozmiarze
+          preview.src = dataUrl;
+          preview.classList.remove('hidden');
+          const kb = (dataUrl.length * 0.75) / 1024; // przybliżony rozmiar pliku
+          info.textContent = 'Skompresowano: ' + width + 'x' + height + 'px, ~' + kb.toFixed(1) + ' KB';
+        };
+        img.onerror = function () { alert('Nie można odczytać obrazu.'); };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Wypełnia formularz danymi produktu do edycji
+    function loadProductIntoForm(id) {
+      const p = products[id];
+      if (!p) return;
+      editingProductId = id;
+      document.getElementById('product-name').value = p.name || '';
+      document.getElementById('product-desc').value = p.desc || '';
+      document.getElementById('product-price').value = p.price || '';
+      document.getElementById('product-stock').value = p.stock || 0;
+      // Podgląd aktualnego zdjęcia (jeśli istnieje)
+      const preview = document.getElementById('product-image-preview');
+      const info = document.getElementById('product-image-info');
+      if (p.image && p.image.length > 20) {
+        preview.src = p.image;
+        preview.classList.remove('hidden');
+        info.textContent = 'Aktualne zdjęcie (możesz wczytac nowe).';
+      } else {
+        preview.classList.add('hidden');
+        info.textContent = '';
+      }
+      document.getElementById('admin-form-title').textContent = 'Edytuj produkt';
+      document.getElementById('admin-form-reset').textContent = 'Anuluj edycje';
+      document.getElementById('admin-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // Zapis formularza produktu (dodanie lub edycja)
+    function handleProductSubmit(e) {
+      e.preventDefault();
+      const name = document.getElementById('product-name').value.trim();
+      const desc = document.getElementById('product-desc').value.trim();
+      const price = parseFloat(document.getElementById('product-price').value);
+      const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
+      const image = document.getElementById('product-image-data').value; // Base64 (lub puste)
+
+      if (!name) { alert('Podaj nazwe produktu.'); return; }
+      if (isNaN(price) || price < 0) { alert('Podaj poprawna cene.'); return; }
+
+      if (editingProductId) {
+        // Aktualizacja istniejącego produktu
+        const updates = { name: name, desc: desc, price: price, stock: stock };
+        if (image) updates.image = image; // tylko jeśli wczytano nowe zdjęcie
+        db.ref('products/' + editingProductId).update(updates)
+          .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
+          .catch(function (e) { alert('Błąd: ' + e.message); });
+      } else {
+        // Dodanie nowego produktu
+        const id = genUUID();
+        db.ref('products/' + id).set({ name: name, desc: desc, price: price, stock: stock, image: image, createdAt: Date.now() })
+          .then(function () { flash('Produkt dodany.'); resetProductForm(); })
+          .catch(function (e) { alert('Błąd: ' + e.message); });
+      }
+    }
+
+    function resetProductForm() {
+      editingProductId = null;
+      document.getElementById('admin-product-form').reset();
+      document.getElementById('product-image-data').value = '';
+      document.getElementById('product-image-preview').classList.add('hidden');
+      document.getElementById('product-image-info').textContent = '';
+      document.getElementById('admin-form-title').textContent = 'Dodaj nowy produkt';
+      document.getElementById('admin-form-reset').textContent = 'Wyczyść';
+    }
+
+    /* --- Tabela zamówień --- */
+    function renderAdminOrders() {
+      const tbody = document.getElementById('orders-tbody');
+      const keys = Object.keys(orders);
+      tbody.innerHTML = '';
+
+      // Sortuj: najnowsze na górze
+      keys.sort(function (a, b) { return (orders[b].createdAt || 0) - (orders[a].createdAt || 0); });
+
+      const active = [];
+      const archived = [];
+
+      keys.forEach(function (id) {
+        const o = orders[id];
+        if (!o) return;
+        if (o.isDeleted) archived.push({ id: id, o: o });
+        else active.push({ id: id, o: o });
+      });
+
+      // Nagłówek sekcji aktywne
+      if (active.length === 0) {
+        tbody.innerHTML += '<tr><td colspan="8" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
+      } else {
+        active.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
+      }
+
+      // Sekcja archiwum (anulowane/usunięte)
+      if (archived.length > 0) {
+        tbody.innerHTML +=
+          '<tr class="border-t border-white/10"><td colspan="8" class="pt-6 pb-2">' +
+          '  <p class="text-xs uppercase tracking-wide text-slate-500 font-bold">Archiwum (anulowane / usunięte)</p>' +
+          '</td></tr>';
+        archived.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, true)); });
+      }
+    }
+
+    // Wiersz tabeli zamówienia
+    function orderRow(id, o, isArchived) {
+      const tr = document.createElement('tr');
+      tr.className = 'border-b border-white/5 hover:bg-white/[0.02]';
+
+      const statusOptions = STATUSES.map(function (s) {
+        return '<option value="' + s + '"' + (o.status === s ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+
+      tr.innerHTML =
+        '<td class="py-3 px-3 text-xs font-mono text-slate-400">' + esc(shortId(id)) + '</td>' +
+        '<td class="py-3 px-3">' +
+        '  <p class="text-white font-medium">' + esc(o.name) + '</p>' +
+        (o.className ? '<p class="text-xs text-slate-500">' + esc(o.className) + '</p>' : '') +
+        '</td>' +
+        '<td class="py-3 px-3 text-sm text-slate-300">' + esc(o.productName) + '</td>' +
+        '<td class="py-3 px-3 text-sm text-slate-300">' + (o.qty || 0) + ' szt.</td>' +
+        '<td class="py-3 px-3 text-sm text-slate-400">' + fmtDate(o.createdAt) + '</td>' +
+        '<td class="py-3 px-3">' +
+        (isArchived
+          ? '<span class="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-2 py-1">Anulowane</span>' +
+            (o.deleteReason ? '<p class="text-xs text-slate-500 mt-1">' + esc(o.deleteReason) + '</p>' : '')
+          : '<select data-status-id="' + id + '" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center">' + statusOptions + '</select>') +
+        '</td>' +
+        '<td class="py-3 px-3">' +
+        '  <button data-copy-link="' + id + '" title="Kopiuj link śledzenia" class="text-accent hover:text-sky-300 text-sm px-2 py-1">Kopiuj link</button>' +
+        '</td>' +
+        '<td class="py-3 px-3">' +
+        (isArchived
+          ? '<span class="text-xs text-slate-600">—</span>'
+          : '<button data-cancel="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Anuluj i usuń</button>') +
+        '</td>';
+
+      // Podepnij zdarzenia
+      if (!isArchived) {
+        // Zmiana statusu
+        const sel = tr.querySelector('[data-status-id]');
+        sel.addEventListener('change', function () {
+          db.ref('orders/' + id + '/status').set(sel.value)
+            .then(function () { flash('Status zaktualizowany.'); })
+            .catch(function (e) { alert('Błąd: ' + e.message); });
+        });
+
+        // Anulowanie i usunięcie
+        tr.querySelector('[data-cancel]').addEventListener('click', function () {
+          openCancelModal(id);
+        });
+      }
+
+      // Kopiowanie linku śledzenia
+      tr.querySelector('[data-copy-link]').addEventListener('click', function () {
+        copyText(trackingLink(id)).then(function () { flash('Link śledzenia skopiowany.'); });
+      });
+
+      return tr;
+    }
+
+    /* --- Modal anulowania zamówienia --- */
+    let cancelOrderId = null;
+
+    function openCancelModal(orderId) {
+      cancelOrderId = orderId;
+      const list = document.getElementById('cancel-reasons');
+      list.innerHTML = '';
+      CANCEL_REASONS.forEach(function (r) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = r;
+        btn.className =
+          'text-left w-full px-4 py-3 rounded-xl border border-white/10 hover:border-red-400/40 ' +
+          'hover:bg-red-400/10 transition-all text-sm';
+        btn.addEventListener('click', function () { confirmCancel(r); });
+        list.appendChild(btn);
+      });
+      document.getElementById('cancel-modal').classList.remove('hidden');
+    }
+
+    function closeCancelModal() {
+      document.getElementById('cancel-modal').classList.add('hidden');
+      cancelOrderId = null;
+    }
+
+    // Zatwierdza anulowanie: ustawia isDeleted + powód
+    function confirmCancel(reason) {
+      if (!cancelOrderId) return;
+      db.ref('orders/' + cancelOrderId).update({
+        isDeleted: true,
+        deleteReason: reason,
+        status: 'Anulowane'
+      })
+        .then(function () {
+          flash('Zamówienie anulowane.');
+          closeCancelModal();
+        })
+        .catch(function (e) {
+          alert('Błąd: ' + e.message);
+        });
+    }
+
+    /* --- Krótkie powiadomienie (toast) --- */
+    let flashTimer = null;
+    function flash(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('opacity-0', 'pointer-events-none');
+      if (flashTimer) clearTimeout(flashTimer);
+      flashTimer = setTimeout(function () {
+        el.classList.add('opacity-0', 'pointer-events-none');
+      }, 2200);
+    }
+
+    /* ------------------------------------------------------------------
+       START APLIKACJI
+       ------------------------------------------------------------------ */
+    document.addEventListener('DOMContentLoaded', function () {
+      startListeners();
+      route();
+
+      // Obsługa formularza zamówienia
+      document.getElementById('order-form-form').addEventListener('submit', handleOrderSubmit);
+      // Zamykanie modali po kliknięciu w tło
+      document.getElementById('order-form').addEventListener('click', function (e) {
+        if (e.target === this) closeOrderForm();
+      });
+      document.getElementById('cancel-modal').addEventListener('click', function (e) {
+        if (e.target === this) closeCancelModal();
+      });
+    });
+
+    // Obsługa przycisku "Back" (popstate) - przeładowanie widoków
+    window.addEventListener('popstate', route);
+  </script>
+
+  <!-- ============================================================
+       S Z A B L O N Y   W I D O K Ó W  (HTML)
+       ============================================================ -->
+
+  <!-- ================= WIDOK 1: SKLEP ================= -->
+  <div id="view-shop" data-view class="hidden">
+    <!-- NAGŁÓWEK -->
+    <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
+      <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+        <img src="logo.png" alt="Logo Szkolnego Warsztatu 3D" class="w-11 h-11 rounded-xl object-cover" />
+        <div class="flex-1">
+          <h1 class="text-lg font-bold text-white leading-tight">Szkolny Warsztat 3D</h1>
+          <p class="text-xs text-slate-400">Wydruki 3D dla spolecznosci szkolnej</p>
+        </div>
+        <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
+      </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+      <!-- Sekcja powitalna -->
+      <section class="text-center mb-10">
+        <h2 class="text-3xl sm:text-4xl font-bold text-white">Zamów wlasny wydruk 3D</h2>
+        <p class="text-slate-400 mt-2 max-w-xl mx-auto">
+          Wybierz oferte, podaj imię i ilość sztuk. Śledź postep realizacji na swoim unikalnym liscie.
+        </p>
+      </section>
+
+      <!-- Lista ofert (wypełniana przez JS) -->
+      <section>
+        <h3 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Dostępne oferty</h3>
+        <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
+      <p>Szkolny Warsztat 3D - projekt szkolny</p>
+    </footer>
+
+    <!-- MODAL: FORMULARZ ZAMÓWIENIA -->
+    <div id="order-form" class="hidden fixed inset-0 z-40 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 id="order-form-title" class="text-lg font-bold text-white">Zamówienie</h3>
+          <button onclick="closeOrderForm()" class="text-slate-500 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+        <form id="order-form-form" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Imię *</label>
+            <input id="order-name" type="text" required placeholder="np. Kuba"
+              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Klasa (opcjonalnie)</label>
+            <input id="order-class" type="text" placeholder="np. 3B"
+              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Ilość sztuk</label>
+            <input id="order-qty" type="number" min="1" value="1"
+              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+          </div>
+          <div id="order-message"></div>
+          <button type="submit"
+            class="w-full py-3 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all shadow-lg shadow-accent/20">Zamów</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- KARTA PODSUMOWANIA (wypełniana po złożeniu zamówienia) -->
+    <div id="order-summary" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
+      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl"></div>
+    </div>
+  </div>
+
+  <!-- ================= WIDOK 2: ŚLEDZENIE ================= -->
+  <div id="view-tracking" data-view class="hidden">
+    <div class="min-h-screen flex flex-col">
+      <header class="border-b border-white/5">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <img src="logo.png" alt="Logo" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">Szkolny Warsztat 3D</h1>
+        </div>
+      </header>
+      <main class="flex-1 flex items-center justify-center px-4 py-10">
+        <div id="tracking-box" class="w-full"></div>
+      </main>
+      <footer class="text-center text-sm text-slate-500 py-6">Szkolny Warsztat 3D</footer>
+    </div>
+  </div>
+
+  <!-- ================= WIDOK 3: PANEL ADMINA ================= -->
+  <div id="view-admin" data-view class="hidden">
+    <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
+        <img src="logo.png" alt="Logo" class="w-10 h-10 rounded-lg object-cover" />
+        <div class="flex-1">
+          <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
+          <p class="text-xs text-slate-400">System zarządzania produkcja i zamówieniami</p>
+        </div>
+        <a href="." class="text-xs text-slate-500 hover:text-accent transition-colors">Widok sklepu</a>
+      </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-8">
+      <!-- STATYSTYKI -->
+      <section class="mb-10">
+        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki na zywo</h2>
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <div class="bg-panel border border-white/10 rounded-2xl p-4">
+            <p class="text-xs text-slate-500">Wszystkie zamówienia</p>
+            <p id="stat-total" class="text-2xl font-bold text-white mt-1">0</p>
+          </div>
+          <div class="bg-panel border border-white/10 rounded-2xl p-4">
+            <p class="text-xs text-slate-500">Aktywne wydruki</p>
+            <p id="stat-printing" class="text-2xl font-bold text-cyan-300 mt-1">0</p>
+          </div>
+          <div class="bg-panel border border-white/10 rounded-2xl p-4">
+            <p class="text-xs text-slate-500">W kolejce</p>
+            <p id="stat-queued" class="text-2xl font-bold text-amber-300 mt-1">0</p>
+          </div>
+          <div class="bg-panel border border-white/10 rounded-2xl p-4">
+            <p class="text-xs text-slate-500">Wydrukowane sztuki</p>
+            <p id="stat-delivered" class="text-2xl font-bold text-emerald-300 mt-1">0</p>
+          </div>
+          <div class="bg-panel border border-white/10 rounded-2xl p-4">
+            <p class="text-xs text-slate-500">Szacowany zarobek</p>
+            <p id="stat-revenue" class="text-2xl font-bold text-accent mt-1">0,00 zl</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ZARZĄDZANIE PRODUKTAMI -->
+      <section class="mb-10 grid lg:grid-cols-2 gap-8">
+        <!-- Formularz dodawania/edycji -->
+        <div id="admin-form" class="bg-panel border border-white/10 rounded-2xl p-6">
+          <h3 id="admin-form-title" class="text-lg font-bold text-white mb-4">Dodaj nowy produkt</h3>
+          <form id="admin-product-form" class="space-y-4">
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">Nazwa *</label>
+              <input id="product-name" type="text" required placeholder="np. Kolo zębate 40T"
+                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">Opis</label>
+              <textarea id="product-desc" rows="2" placeholder="Krótki opis wydruku"
+                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm text-slate-400 mb-1">Cena (zl) *</label>
+                <input id="product-price" type="number" step="0.01" min="0" required placeholder="np. 5.00"
+                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+              </div>
+              <div>
+                <label class="block text-sm text-slate-400 mb-1">Stan magazynowy</label>
+                <input id="product-stock" type="number" min="0" value="0"
+                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+              </div>
+            </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">Zdjęcie (opcjonalne)</label>
+              <input id="product-image" type="file" accept="image/*"
+                class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
+              <input id="product-image-data" type="hidden" value="" />
+              <img id="product-image-preview" alt="Podgląd zdjęcia" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
+              <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
+            </div>
+            <div class="flex gap-3 pt-1">
+              <button type="submit"
+                class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz produkt</button>
+              <button type="button" id="admin-form-reset" onclick="resetProductForm()"
+                class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Wyczyść</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Lista produktów -->
+        <div class="bg-panel border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-bold text-white mb-4">Produkty w sklepie</h3>
+          <div id="admin-products" class="space-y-3"></div>
+        </div>
+      </section>
+
+      <!-- TABELA ZAMÓWIEŃ -->
+      <section class="bg-panel border border-white/10 rounded-2xl p-6">
+        <h3 class="text-lg font-bold text-white mb-4">Zamówienia</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm border-collapse min-w-[820px]">
+            <thead>
+              <tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">
+                <th class="py-3 px-3">ID</th>
+                <th class="py-3 px-3">Imię / Klasa</th>
+                <th class="py-3 px-3">Produkt</th>
+                <th class="py-3 px-3">Ilość</th>
+                <th class="py-3 px-3">Data</th>
+                <th class="py-3 px-3">Status</th>
+                <th class="py-3 px-3">Link</th>
+                <th class="py-3 px-3">Akcje</th>
+              </tr>
+            </thead>
+            <tbody id="orders-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- MODAL: ANULOWANIE ZAMÓWIENIA -->
+    <div id="cancel-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        <h3 class="text-lg font-bold text-white mb-1">Anuluj i usuń zamówienie</h3>
+        <p class="text-sm text-slate-400 mb-5">Wybierz powod anulowania. Uczen zobaczy go na swoim liscie śledzenia.</p>
+        <div id="cancel-reasons" class="space-y-2"></div>
+        <button onclick="closeCancelModal()"
+          class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST (krótkie powiadomienia) -->
+  <div id="toast"
+    class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-800 border border-white/10 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-2xl opacity-0 pointer-events-none transition-opacity duration-300">
+  </div>
+
+</body>
+</html>
