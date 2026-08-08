@@ -43,7 +43,38 @@
   <!-- ============================================================
        Q R C O D E  (generator kodów QR do udostępniania strony)
        ============================================================ -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
+  <!-- Tło aplikacji (obraz bliss) z ciemną nakładką dla czytelności -->
+  <style>
+    body {
+      background:
+        linear-gradient(rgba(11, 15, 26, 0.84), rgba(11, 15, 26, 0.92)),
+        url('bg.jpg') center / cover fixed no-repeat;
+    }
+
+    /* Glassmorphism - delikatne, półprzezroczyste panele (frosted glass).
+       Małe rozmycie + umiarkowana saturacja = lekki dla CPU, zachowuje efekt. */
+    [class*="bg-panel"] {
+      background: rgba(18, 24, 38, 0.55);
+      backdrop-filter: blur(10px) saturate(130%);
+      -webkit-backdrop-filter: blur(10px) saturate(130%);
+      border: 1px solid rgba(255, 255, 255, 0.10);
+    }
+    /* Pola formularzy zachowują czytelność bez rozmycia tła */
+    input[class*="bg-panel"],
+    select[class*="bg-panel"],
+    textarea[class*="bg-panel"] {
+      background: rgba(11, 15, 26, 0.65);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    /* Górne paski (sticky) - mniejsze rozmycie, by oszczędzać CPU */
+    header.backdrop-blur-xl {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+  </style>
 </head>
 
 <body class="bg-base text-slate-200 font-sans min-h-screen">
@@ -233,8 +264,12 @@
         document.getElementById('view-tracking').classList.remove('hidden');
         initTracking(orderId);
       } else if (isAdmin) {
-        document.getElementById('view-admin').classList.remove('hidden');
-        initAdmin();
+        if (isAdminAuthed()) {
+          document.getElementById('view-admin').classList.remove('hidden');
+          initAdmin();
+        } else {
+          document.getElementById('view-admin-login').classList.remove('hidden');
+        }
       } else {
         document.getElementById('view-shop').classList.remove('hidden');
         renderShop();
@@ -1054,6 +1089,61 @@
     }
 
     /* ------------------------------------------------------------------
+       LOGOWANIE DO PANELU ADMINISTRATORA (hasło porównywane z hashem w bazie)
+       ------------------------------------------------------------------ */
+    const ADMIN_AUTH_KEY = 'maslo3d_admin_auth';
+
+    // Czy sesja admina jest zalogowana (zachowane na czas przeglądarki)
+    function isAdminAuthed() {
+      try { return sessionStorage.getItem(ADMIN_AUTH_KEY) === '1'; } catch (e) { return false; }
+    }
+
+    // Hashowanie SHA-256 (Web Crypto) - hasło nigdy nie trafia do kodu w postaci jawnej
+    async function sha256(text) {
+      const data = new TextEncoder().encode(text);
+      const buf = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(buf)).map(function (b) {
+        return b.toString(16).padStart(2, '0');
+      }).join('');
+    }
+
+    // Logowanie: porównaj hash wpisanego hasła z hashem zapisanym w ustawieniach bazy
+    async function handleAdminLogin(e) {
+      e.preventDefault();
+      const err = document.getElementById('admin-login-error');
+      const btn = document.getElementById('admin-login-btn');
+      const pass = document.getElementById('admin-pass').value;
+      const stored = (settings.adminPasswordHash || '').toLowerCase();
+
+      if (!stored) {
+        err.textContent = 'Panel nie został skonfigurowany (brak hasła w bazie).';
+        return;
+      }
+      err.textContent = '';
+      btn.disabled = true;
+      try {
+        const hash = await sha256(pass);
+        if (hash === stored) {
+          sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
+          route();
+        } else {
+          err.textContent = 'Nieprawidłowe hasło.';
+          document.getElementById('admin-pass').value = '';
+        }
+      } catch (ex) {
+        err.textContent = 'Błąd logowania: ' + ex.message;
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    // Wylogowanie z panelu
+    function adminLogout() {
+      try { sessionStorage.removeItem(ADMIN_AUTH_KEY); } catch (e) { /* ignoruj */ }
+      window.location.search = '';
+    }
+
+    /* ------------------------------------------------------------------
        START
        ------------------------------------------------------------------ */
     document.addEventListener('DOMContentLoaded', function () {
@@ -1072,10 +1162,14 @@
       document.getElementById('checkout-form').addEventListener('submit', handleCheckout);
       document.getElementById('checkout-close').addEventListener('click', closeCheckout);
 
+      // Logowanie do panelu
+      document.getElementById('admin-login-form').addEventListener('submit', handleAdminLogin);
+
       // Admin
       document.getElementById('settings-form').addEventListener('submit', handleSettingsSubmit);
       document.getElementById('admin-product-form').addEventListener('submit', handleProductSubmit);
       document.getElementById('product-image').addEventListener('change', handleImageSelect);
+      document.getElementById('admin-logout').addEventListener('click', adminLogout);
 
       // Zamykanie modali po kliknięciu w tło
       document.getElementById('checkout-modal').addEventListener('click', function (e) { if (e.target === this) closeCheckout(); });
@@ -1248,6 +1342,47 @@
     </div>
   </div>
 
+  <!-- ================= WIDOK: LOGOWANIE DO PANELU ================= -->
+  <div id="view-admin-login" data-view class="hidden">
+    <div class="min-h-screen flex flex-col">
+      <header class="border-b border-white/5">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <img src="logo.png" alt="Logo Maslo3D" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">Maslo3D</h1>
+        </div>
+      </header>
+      <main class="flex-1 flex items-center justify-center px-4 py-10">
+        <div class="w-full max-w-sm">
+          <div class="bg-panel border border-white/10 rounded-2xl p-6 shadow-2xl">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-11 h-11 rounded-xl bg-accent/20 border border-accent/30 flex items-center justify-center">
+                <svg class="w-6 h-6 text-accent" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                </svg>
+              </div>
+              <div>
+                <h2 class="text-lg font-bold text-white">Panel administratora</h2>
+                <p class="text-xs text-slate-400">Zaloguj się, aby kontynuować</p>
+              </div>
+            </div>
+            <form id="admin-login-form" class="space-y-4">
+              <div>
+                <label class="block text-sm text-slate-400 mb-1">Hasło</label>
+                <input id="admin-pass" type="password" required autofocus placeholder="Hasło do panelu"
+                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+              </div>
+              <p id="admin-login-error" class="text-sm text-red-300"></p>
+              <button id="admin-login-btn" type="submit"
+                class="w-full py-3 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all shadow-lg shadow-accent/20">Zaloguj</button>
+            </form>
+            <a href="." class="mt-4 block text-center text-sm text-slate-500 hover:text-accent transition-colors">Wróć do sklepu</a>
+          </div>
+        </div>
+      </main>
+      <footer class="text-center text-sm text-slate-500 py-6">Maslo3D</footer>
+    </div>
+  </div>
+
   <!-- ================= WIDOK 3: PANEL ADMINA ================= -->
   <div id="view-admin" data-view class="hidden">
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
@@ -1257,6 +1392,7 @@
           <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
           <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
         </div>
+        <button id="admin-logout" class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-red-400/40 hover:text-red-300 transition-colors">Wyloguj</button>
         <a href="." class="text-xs text-slate-500 hover:text-accent transition-colors">Widok sklepu</a>
       </div>
     </header>

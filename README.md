@@ -16,9 +16,10 @@ Aplikacja ma trzy tryby dostępu, przełączane parametrami w adresie URL:
 | **Śledzenie zamówienia** | `https://wegiel360.github.io/maslo3d/?orderId=UUID` |
 | **Panel administratora (ERP)** | `https://wegiel360.github.io/maslo3d/?admin=true` |
 
-Panel administratora nie wymaga hasła — działa w trybie publicznym bazy.
-Chroń dostęp do niego (np. nie upubliczniaj linku), ponieważ statusy są weryfikowane
-wyłącznie przez unikalne identyfikatory UUID zamówień.
+Panel administratora jest chroniony hasłem. Jego hash (SHA-256) przechowywany jest
+w bazie w węźle `settings/adminPasswordHash` - hasło nigdy nie znajduje się w kodzie
+ani w tym pliku. Chroń dostęp do panelu (np. nie upubliczniaj linku), a statusy
+weryfikowane są unikalnymi identyfikatorami UUID zamówień.
 
 ---
 
