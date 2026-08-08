@@ -9,6 +9,13 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="logo.png" />
 
+  <!-- Preconnect do kluczowych źródeł (szybsze ładowanie SDK i CDN) -->
+  <link rel="preconnect" href="https://www.gstatic.com" />
+  <link rel="preconnect" href="https://www.googleapis.com" />
+  <link rel="preconnect" href="https://cdn.tailwindcss.com" />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+  <link rel="preconnect" href="https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app" crossorigin />
+
   <!-- ============================================================
        T A I L W I N D  (CDN Play) - klasy narzędziowe
        ============================================================ -->
@@ -25,8 +32,7 @@
             // Paleta technologiczna (ciemny motyw)
             base: '#0b0f1a',
             panel: '#121826',
-            accent: '#38bdf8',
-            neon: '#22d3ee'
+            accent: '#38bdf8'
           }
         }
       }
@@ -41,9 +47,9 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 
   <!-- ============================================================
-       Q R C O D E  (generator kodów QR do udostępniania strony)
+       Q R C O D E  - ładowany lazy (tylko gdy potrzebny),
+       aby nie obciążać początkowego ładowania strony.
        ============================================================ -->
-   <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
   <!-- Tło aplikacji (obraz bliss) z ciemną nakładką dla czytelności -->
   <style>
@@ -120,12 +126,18 @@
     ];
 
     // Jedyna dostępna opcja dostawy (odbiór w szkole)
-    const DELIVERY_OPTIONS = ['Szkoła'];
+    const DELIVERY = 'Szkoła';
+
+    // Limity: 1 zamówienie na 2 minuty oraz max 6 ofert na zamówienie (antyspam)
+    const ORDER_MIN_INTERVAL_MS = 2 * 60 * 1000;
+    const ORDER_MAX_ITEMS = 6;
+    // Klucz localStorage z czasem ostatniego złożonego zamówienia
+    const LAST_ORDER_KEY = 'maslo3d_last_order';
 
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
     let settings = { pricePerGram: 0, mode: 'queue', banner: '' }; // cena za gram (zł), tryb, komunikat
     let products = {}; // id -> {name, desc, weight, stock, image, createdAt}
-    let orders = {};   // id -> {name, className, delivery, items, totalWeight, totalPrice, status, queuedBacklog, createdAt, isDeleted, deleteReason}
+    let orders = {};   // id -> {name, className, delivery, items, totalWeight, totalPrice, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
     // Koszyk (productId -> ilość), zapisywany lokalnie
     let cart = {};
@@ -182,8 +194,35 @@
     function pageUrl() {
       return window.location.origin + window.location.pathname;
     }
-    function trackingLink(orderId) {
-      return pageUrl() + '?orderId=' + orderId;
+    // Link śledzenia na podstawie 3-cyfrowego kodu zamówienia
+    function trackingLink(orderCode) {
+      return pageUrl() + '?o=' + orderCode;
+    }
+
+    /* --- Generowanie 3-cyfrowego kodu zamówienia (001-999).
+           Unikalny wśród AKTYWNYCH (nieusuniętych) zamówień;
+           anulowane/usunięte zwalniają swój numer. --- */
+    function genOrderCode() {
+      const used = {};
+      Object.values(orders).forEach(function (o) {
+        if (o && o.orderCode && !o.isDeleted) used[o.orderCode] = true;
+      });
+      let code = '';
+      do {
+        code = String(Math.floor(Math.random() * 999) + 1).padStart(3, '0');
+      } while (used[code]);
+      return code;
+    }
+
+    /* --- Antyspam: czy można złożyć kolejne zamówienie? --- */
+    function orderCooldownMs() {
+      try {
+        const last = parseInt(localStorage.getItem(LAST_ORDER_KEY), 10) || 0;
+        return Math.max(0, last + ORDER_MIN_INTERVAL_MS - Date.now());
+      } catch (e) { return 0; }
+    }
+    function markOrderPlaced() {
+      try { localStorage.setItem(LAST_ORDER_KEY, String(Date.now())); } catch (e) { /* ignoruj */ }
     }
 
     /* --- Kopiowanie do schowka --- */
@@ -240,13 +279,21 @@
     }
 
     /* --- Rysowanie kodu QR w danym kontenerze --- */
+    // Lazy-load biblioteki QR i renderowanie kodu (żadnego dodatkowego obciążenia przy starcie)
     function renderQR(containerId, text) {
       const el = document.getElementById(containerId);
       el.innerHTML = '';
       if (window.QRCode) {
         new QRCode(el, { text: text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
       } else {
-        el.innerHTML = '<a href="' + esc(text) + '" class="text-accent underline break-all">' + esc(text) + '</a>';
+        // Asynchronicznie wczytaj bibliotekę QR dopiero teraz
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+        s.onload = function () { renderQR(containerId, text); };
+        s.onerror = function () {
+          el.innerHTML = '<a href="' + esc(text) + '" class="text-accent underline break-all">' + esc(text) + '</a>';
+        };
+        document.head.appendChild(s);
       }
     }
 
@@ -255,14 +302,16 @@
        ------------------------------------------------------------------ */
     function route() {
       const params = new URLSearchParams(window.location.search);
+      const code = params.get('o');
       const orderId = params.get('orderId');
       const isAdmin = params.get('admin') === 'true';
 
       document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
 
-      if (orderId) {
+      if (code || orderId) {
         document.getElementById('view-tracking').classList.remove('hidden');
-        initTracking(orderId);
+        // Priorytet: nowy 3-cyfrowy kod (?o=); fallback stary UUID (?orderId=)
+        initTracking(code ? 'o:' + code : 'id:' + orderId);
       } else if (isAdmin) {
         if (isAdminAuthed()) {
           document.getElementById('view-admin').classList.remove('hidden');
@@ -284,7 +333,7 @@
       db.ref('settings').on('value', function (snap) {
         settings = snap.val() || settings;
         renderShop();
-        if (isViewOpen('view-admin')) renderAdminSettings();
+        if (isViewOpen('view-admin')) { renderAdminSettings(); renderChart(); }
       });
 
       // Produkty
@@ -298,9 +347,12 @@
       db.ref('orders').on('value', function (snap) {
         orders = snap.val() || {};
         const params = new URLSearchParams(window.location.search);
+        const code = params.get('o');
         const orderId = params.get('orderId');
-        if (orderId) initTracking(orderId);
-        if (isViewOpen('view-admin')) renderAdminOrders();
+        // Po każdej aktualizacji spróbuj rozwiązać widok śledzenia
+        if (code) initTracking('o:' + code);
+        else if (orderId) initTracking('id:' + orderId);
+        if (isViewOpen('view-admin')) { renderAdminOrders(); renderStats(); renderChart(); }
       });
     }
 
@@ -504,12 +556,30 @@
       const delivery = document.getElementById('checkout-delivery').value;
       const msg = document.getElementById('checkout-message');
 
+      // Imię i klasa są wymagane - bez nich zamówienie może być opóźnione lub anulowane
       if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj swoje imię.</p>'; return; }
+      if (!className) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj klasę - bez niej zamówienie może być opóźnione lub anulowane.</p>'; return; }
 
       const s = cartSummary();
       if (s.count === 0) { msg.innerHTML = '<p class="text-red-300 text-sm">Koszyk jest pusty.</p>'; return; }
 
+      // Antyspam: limit 1 zamówienie na 2 minuty
+      const cooldown = orderCooldownMs();
+      if (cooldown > 0) {
+        const sec = Math.ceil(cooldown / 1000);
+        msg.innerHTML = '<p class="text-amber-300 text-sm">Odczekaj jeszcze ' + sec + ' s przed złożeniem kolejnego zamówienia.</p>';
+        return;
+      }
+
+      // Antyspam: maksymalnie 6 różnych ofert w jednym zamówieniu
+      const distinctCount = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; }).length;
+      if (distinctCount > ORDER_MAX_ITEMS) {
+        msg.innerHTML = '<p class="text-red-300 text-sm">Maksymalnie ' + ORDER_MAX_ITEMS + ' różnych ofert w jednym zamówieniu.</p>';
+        return;
+      }
+
       const orderId = genUUID();
+      const orderCode = genOrderCode();
 
       // Budowa pozycji zamówienia na podstawie koszyka
       const items = [];
@@ -533,12 +603,13 @@
 
       const order = {
         name: name,
-        className: className || '',
-        delivery: delivery || 'Szkoła',
+        className: className,
+        delivery: delivery || DELIVERY,
         payment: 'Brak (rozliczenie przy odbiorze w szkole)',
         items: items,
         totalWeight: totalWeight,
         totalPrice: totalPrice,
+        orderCode: orderCode,
         status: 'W kolejce',
         queuedBacklog: backlog,
         createdAt: Date.now(),
@@ -561,8 +632,9 @@
         .then(function () {
           cart = {};
           saveCart();
+          markOrderPlaced(); // zapis czasu zamówienia (antyspam)
           closeCheckout();
-          showOrderSummary(orderId, name, order, backlog);
+          showOrderSummary(name, order, backlog);
         })
         .catch(function (err) {
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
@@ -570,8 +642,8 @@
     }
 
     // Karta podsumowania z unikalnym linkiem i kodem QR
-    function showOrderSummary(orderId, name, order, backlog) {
-      const link = trackingLink(orderId);
+    function showOrderSummary(name, order, backlog) {
+      const link = trackingLink(order.orderCode);
       const wrap = document.getElementById('order-summary');
       wrap.classList.remove('hidden');
       wrap.innerHTML =
@@ -583,6 +655,7 @@
         '  </div>' +
         '  <h3 class="text-2xl font-bold text-white">Dziękujemy, ' + esc(name) + '!</h3>' +
         '  <p class="text-slate-400 mt-1">Twoje zamówienie trafiło do kolejki.</p>' +
+        '  <div class="mt-3 inline-block bg-accent/15 border border-accent/40 text-accent font-bold text-2xl px-6 py-2 rounded-xl tracking-widest">' + esc(order.orderCode) + '</div>' +
         (backlog
           ? '<p class="mt-3 text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-2 text-sm font-semibold">BRAK W MAGAZYNIE - zamawiając, trafiasz do kolejki oczekujących</p>'
           : '') +
@@ -617,13 +690,62 @@
       document.getElementById('share-modal').classList.add('hidden');
     }
 
+    /* --- Modal "Śledź paczkę" (wpisz numer zamówienia) --- */
+    function openTrackLookup() {
+      const form = document.getElementById('track-lookup-form');
+      if (form) form.reset();
+      const err = document.getElementById('track-lookup-error');
+      if (err) err.textContent = '';
+      document.getElementById('track-lookup-modal').classList.remove('hidden');
+    }
+    function closeTrackLookup() {
+      document.getElementById('track-lookup-modal').classList.add('hidden');
+    }
+    function handleTrackLookup(e) {
+      e.preventDefault();
+      const err = document.getElementById('track-lookup-error');
+      err.textContent = '';
+      let code = document.getElementById('track-lookup-code').value.trim();
+      // Normalizacja: dokładnie 3 cyfry
+      code = code.replace(/\D/g, '').slice(0, 3);
+      if (code.length !== 3) {
+        err.textContent = 'Podaj 3-cyfrowy numer zamówienia.';
+        return;
+      }
+      closeTrackLookup();
+      // Przekierowanie na ekran śledzenia (?o=KOD)
+      window.location.search = '?o=' + code;
+    }
+
     /* ==================================================================
-       W I D O K   2:  ŚLEDZENIE ZAMÓWIENIA (?orderId=UUID)
+       W I D O K   2:  ŚLEDZENIE ZAMÓWIENIA
+       Parametr ?o=KOD (3 cyfry) lub fallback ?orderId=UUID
        ================================================================== */
 
     let trackingSubscribedId = null;
+    let trackingKey = null;
 
-    function initTracking(orderId) {
+    // Rozwiązuje klucz (kod lub UUID) na identyfikator zamówienia; null, gdy jeszcze nieznany
+    function resolveTrackingKey(key) {
+      if (key.indexOf('o:') === 0) {
+        const code = key.slice(2);
+        const id = Object.keys(orders).find(function (oid) {
+          const o = orders[oid];
+          return o && o.orderCode === code && !o.isDeleted;
+        });
+        return id || null;
+      }
+      return key.slice(3); // 'id:UUID'
+    }
+
+    function initTracking(key) {
+      trackingKey = key;
+      const orderId = resolveTrackingKey(key);
+      if (!orderId) {
+        // Kod jeszcze nie rozpoznany (baza się ładuje) - pokaż ładowanie; spróbujemy ponownie
+        renderTracking(null, null, true);
+        return;
+      }
       if (trackingSubscribedId !== orderId) {
         if (trackingSubscribedId) db.ref('orders/' + trackingSubscribedId).off('value');
         trackingSubscribedId = orderId;
@@ -635,8 +757,19 @@
       }
     }
 
-    function renderTracking(order, orderId) {
+    function renderTracking(order, orderId, loading) {
       const box = document.getElementById('tracking-box');
+
+      // W trakcie wyszukiwania kodu
+      if (loading) {
+        box.innerHTML =
+          '<div class="text-center max-w-md mx-auto">' +
+          '  <div class="mx-auto w-12 h-12 rounded-full border-2 border-accent/30 border-t-accent animate-spin mb-4"></div>' +
+          '  <h2 class="text-xl font-bold text-white">Szukam zamówienia...</h2>' +
+          '  <p class="text-slate-400 mt-2 text-sm">Sprawdzam numer w systemie.</p>' +
+          '</div>';
+        return;
+      }
 
       // Zamówienie anulowane lub usunięte
       if (!order || order.isDeleted) {
@@ -730,12 +863,13 @@
 
     let editingProductId = null;
 
-    function initAdmin() {
-      renderAdminSettings();
-      renderAdminProducts();
-      renderAdminOrders();
-      renderStats();
-    }
+     function initAdmin() {
+       renderAdminSettings();
+       renderAdminProducts();
+       renderAdminOrders();
+       renderStats();
+       renderChart();
+     }
 
     function renderAdminSettings() {
       document.getElementById('set-price').value = settings.pricePerGram || 0;
@@ -762,6 +896,73 @@
       document.getElementById('stat-queued').textContent = queued;
       document.getElementById('stat-delivered').textContent = fmtGrams(deliveredQty);
       document.getElementById('stat-revenue').textContent = fmtPrice(revenue);
+    }
+
+    // Wykres: liczba zamówień i waga (gramy) na ostatnie 7 dni (D7)
+    function renderChart() {
+      const ordersByDay = {};
+      const gramsByDay = {};
+      const today = new Date();
+      const labels = [];
+
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        labels.push(d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric' }));
+        ordersByDay[key] = 0;
+        gramsByDay[key] = 0;
+      }
+
+      Object.values(orders).forEach(function (o) {
+        if (!o || o.isDeleted) return;
+        const d = new Date(o.createdAt || 0);
+        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        if (ordersByDay.hasOwnProperty(key)) {
+          ordersByDay[key]++;
+          gramsByDay[key] += (o.totalWeight || 0);
+        }
+      });
+
+      const maxOrders = Math.max(1, ...Object.values(ordersByDay));
+      const maxGrams = Math.max(1, ...Object.values(gramsByDay));
+
+      const wrap = document.getElementById('chart-bars');
+      if (!wrap) return;
+
+      // Wykres liczby zamówień
+      let html = '';
+      labels.forEach(function (lbl, i) {
+        const key = Object.keys(ordersByDay)[i];
+        const val = ordersByDay[key];
+        const h = (val / maxOrders) * 100;
+        html +=
+          '<div class="flex flex-col items-center">' +
+          '  <div class="w-6 h-28 flex items-end bg-slate-900/60 rounded-t-sm overflow-hidden border border-white/5">' +
+          '    <div class="w-full bg-cyan-400/80 transition-all duration-500" style="height:' + h + '%"></div>' +
+          '  </div>' +
+          '  <span class="text-[10px] text-slate-500 mt-1">' + lbl + '</span>' +
+          '  <span class="text-[10px] text-white font-medium">' + val + '</span>' +
+          '</div>';
+      });
+      wrap.innerHTML = html;
+
+      const ghtml = [];
+      labels.forEach(function (lbl, i) {
+        const key = Object.keys(gramsByDay)[i];
+        const val = gramsByDay[key];
+        const h = (val / maxGrams) * 100;
+        ghtml.push(
+          '<div class="flex flex-col items-center">' +
+          '  <div class="w-6 h-28 flex items-end bg-slate-900/60 rounded-t-sm overflow-hidden border border-white/5">' +
+          '    <div class="w-full bg-emerald-400/80 transition-all duration-500" style="height:' + h + '%" title="' + val + ' gr"></div>' +
+          '  </div>' +
+          '  <span class="text-[10px] text-slate-500 mt-1">' + lbl + '</span>' +
+          '  <span class="text-[10px] text-white font-medium">' + fmtGrams(val) + '</span>' +
+          '</div>'
+        );
+      });
+      const gw = document.getElementById('chart-grams');
+      if (gw) gw.innerHTML = ghtml.join('');
     }
 
     /* --- Zarządzanie produktami --- */
@@ -1034,7 +1235,7 @@
       }
 
       tr.querySelector('[data-copy-link]').addEventListener('click', function () {
-        copyText(trackingLink(id)).then(function () { flash('Link śledzenia skopiowany.'); });
+        copyText(trackingLink(o.orderCode)).then(function () { flash('Link śledzenia skopiowany.'); });
       });
 
       return tr;
@@ -1157,6 +1358,9 @@
       document.getElementById('cart-checkout').addEventListener('click', openCheckout);
       document.getElementById('share-open').addEventListener('click', openShareModal);
       document.getElementById('share-close').addEventListener('click', closeShareModal);
+      document.getElementById('track-lookup-open').addEventListener('click', openTrackLookup);
+      document.getElementById('track-lookup-close').addEventListener('click', closeTrackLookup);
+      document.getElementById('track-lookup-form').addEventListener('submit', handleTrackLookup);
 
       // Checkout
       document.getElementById('checkout-form').addEventListener('submit', handleCheckout);
@@ -1175,6 +1379,7 @@
       document.getElementById('checkout-modal').addEventListener('click', function (e) { if (e.target === this) closeCheckout(); });
       document.getElementById('cart-drawer').addEventListener('click', function (e) { if (e.target === this) closeCart(); });
       document.getElementById('share-modal').addEventListener('click', function (e) { if (e.target === this) closeShareModal(); });
+      document.getElementById('track-lookup-modal').addEventListener('click', function (e) { if (e.target === this) closeTrackLookup(); });
       document.getElementById('cancel-modal').addEventListener('click', function (e) { if (e.target === this) closeCancelModal(); });
       document.getElementById('order-summary').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
     });
@@ -1198,6 +1403,8 @@
         </div>
         <button id="share-open" title="Udostępnij stronę (kod QR)"
           class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">QR</button>
+        <button id="track-lookup-open" title="Śledź zamówienie po numerze"
+          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Śledź paczkę</button>
         <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
       </div>
     </header>
@@ -1281,8 +1488,8 @@
               class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
           </div>
           <div>
-            <label class="block text-sm text-slate-400 mb-1">Klasa (opcjonalnie)</label>
-            <input id="checkout-class" type="text" placeholder="np. 3B"
+            <label class="block text-sm text-slate-400 mb-1">Klasa *</label>
+            <input id="checkout-class" type="text" required placeholder="np. 3B"
               class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
           </div>
           <div>
@@ -1293,7 +1500,8 @@
             </select>
           </div>
           <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">
-            <p>Płatność: <span class="text-slate-300">brak płatności online - rozliczenie przy odbiorze w szkole</span></p>
+            <p><strong>Podawanie imienia i klasy jest potrzebne TYLKO do procesu dostawy.</strong></p>
+            <p class="mt-1">Płatność: brak płatności online - rozliczenie przy odbiorze w szkole.</p>
           </div>
           <p id="checkout-mode-note" class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2"></p>
           <div id="checkout-message"></div>
@@ -1317,6 +1525,29 @@
         </div>
         <button id="share-close"
           class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
+      </div>
+    </div>
+
+    <!-- MODAL: ŚLEDŹ PACZKĘ (wpisz 3-cyfrowy numer zamówienia) -->
+    <div id="track-lookup-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+        <h3 class="text-lg font-bold text-white mb-1">Śledź paczkę</h3>
+        <p class="text-sm text-slate-400 mb-4">Wpisz 3-cyfrowy numer zamówienia otrzymany po złożeniu.</p>
+        <form id="track-lookup-form" class="space-y-4">
+          <div>
+            <label class="block text-sm text-slate-400 mb-1">Numer zamówienia</label>
+            <input id="track-lookup-code" type="text" inputmode="numeric" pattern="\d{3}" maxlength="3" required
+              placeholder="np. 294"
+              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-center text-2xl font-mono tracking-widest focus:border-accent focus:outline-none" />
+          </div>
+          <p id="track-lookup-error" class="text-sm text-red-300"></p>
+          <div class="flex gap-3">
+            <button type="submit"
+              class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Otwórz</button>
+            <button type="button" id="track-lookup-close"
+              class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Anuluj</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1422,6 +1653,27 @@
           <div class="bg-panel border border-white/10 rounded-2xl p-4">
             <p class="text-xs text-slate-500">Szacowany zarobek</p>
             <p id="stat-revenue" class="text-2xl font-bold text-accent mt-1">0,00 zł</p>
+          </div>
+        </div>
+       </section>
+
+      <!-- WYKRES (ostatnie 7 dni) -->
+      <section class="mb-10">
+        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki tygodniowe</h2>
+        <div class="grid lg:grid-cols-2 gap-8">
+          <!-- Liczba zamówień -->
+          <div class="bg-panel border border-white/10 rounded-2xl p-6">
+            <p class="text-sm font-semibold text-white mb-2">Zamówienia (liczba / dzień)</p>
+            <div class="flex items-end justify-around gap-1 h-40">
+              <div id="chart-bars" class="flex items-end justify-around w-full gap-1"></div>
+            </div>
+          </div>
+          <!-- Łączna waga -->
+          <div class="bg-panel border border-white/10 rounded-2xl p-6">
+            <p class="text-sm font-semibold text-white mb-2">Wydrukowano (waga / dzień)</p>
+            <div class="flex items-end justify-around gap-1 h-40">
+              <div id="chart-grams" class="flex items-end justify-around w-full gap-1"></div>
+            </div>
           </div>
         </div>
       </section>
