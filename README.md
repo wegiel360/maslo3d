@@ -1,4 +1,4 @@
-# Szkolny Warsztat 3D
+# Maslo3D
 
 System zamówień wydruków 3D dla społeczności szkolnej. Responsywna aplikacja typu
 Single Page App (SPA) działająca w języku polskim, z ciemnym, technologicznym
@@ -6,20 +6,9 @@ interfejsem (Tailwind CSS) i danymi przechowywanymi w **Firebase Realtime Databa
 
 Aplikacja jest w 100% gotowa do wdrożenia na **GitHub Pages** (jeden plik `index.html`).
 
-## Spis treści
+## Dostęp do aplikacji
 
-- [Dostep do aplikacji](#dostep-do-aplikacji)
-- [Funkcje](#funkcje)
-- [Konfiguracja Firebase](#konfiguracja-firebase)
-- [Struktura bazy danych](#struktura-bazy-danych)
-- [Wdrożenie na GitHub Pages](#wdrozenie-na-github-pages)
-- [Struktura plików](#struktura-plikow)
-
----
-
-## Dostep do aplikacji
-
-Aplikacja ma trzy tryby dostepu, przełączane parametrami w adresie URL:
+Aplikacja ma trzy tryby dostępu, przełączane parametrami w adresie URL:
 
 | Tryb | Adres |
 |------|-------|
@@ -28,7 +17,7 @@ Aplikacja ma trzy tryby dostepu, przełączane parametrami w adresie URL:
 | **Panel administratora (ERP)** | `https://wegiel360.github.io/maslo3d/?admin=true` |
 
 Panel administratora nie wymaga hasła — działa w trybie publicznym bazy.
-Chroń dostep do niego (np. nie upubliczniaj linku), ponieważ statusy są weryfikowane
+Chroń dostęp do niego (np. nie upubliczniaj linku), ponieważ statusy są weryfikowane
 wyłącznie przez unikalne identyfikatory UUID zamówień.
 
 ---
@@ -36,91 +25,81 @@ wyłącznie przez unikalne identyfikatory UUID zamówień.
 ## Funkcje
 
 **Witryna sklepowa (uczniowie, bez haseł):**
-- Atrakcyjny nagłówek z logo i nazwa "Szkolny Warsztat 3D".
+- Nagłówek z logo i nazwą **Maslo3D**.
+- **Wycena za gram**: administrator ustawia cenę za gram (np. `0,20 zł/gr`), a cena
+  każdego produktu wyliczana jest z jego wagi (`waga x cena za gram`).
 - Dynamiczna lista ofert pobierana w czasie rzeczywistym z Firebase.
-- Karty produktów: zdjęcie, nazwa, opis, cena, aktualny stan magazynowy.
-- Logika kolejkowania: gdy stan magazynowy to 0 lub zamawiana ilość przewyższa stan,
-  pokazywany jest komunikat *"BRAK W MAGAZYNIE - zamawiając, trafiasz do kolejki oczekujących"*.
+- Karty produktów: zdjęcie, nazwa, opis, waga (gramy), cena za gram, aktualny stan.
+- **Koszyk**: dodawanie produktów, zmiana ilości, łączna waga i cena.
+- **Miejsce dostawy**: wyłącznie opcja **Szkoła** (odbiór).
+- **Brak płatności online** - rozliczenie przy odbiorze w szkole.
+- **Tryb zbierania kolejki**: w trakcie wakacji (do 1 września) zamówienia trafiają
+  do kolejki oczekujących, a baner informuje o realizacji po rozpoczęciu roku szkolnego.
+- **Udostępnianie strony kodem QR** - przycisk "QR" w nagłówku generuje kod QR adresu sklepu.
 - Generowanie unikalnego identyfikatora UUID dla każdego zamówienia.
-- Karta podsumowania z unikalnym linkiem do śledzenia (`?orderId=UUID`).
+- Karta podsumowania z linkiem do śledzenia (`?orderId=UUID`) i kodem QR.
 - Ekran śledzenia ze stepperem: [W kolejce] -> [Drukuje się] -> [W drodze] -> [Doręczone].
 - Informacja o anulowaniu zamówienia wraz z podaniem powodu przez administratora.
 
 **Panel administratora (ERP):**
 - Statystyki na żywo: wszystkie zamówienia, aktywne wydruki, liczba osób w kolejce,
-  wydrukowane sztuki, szacowany zarobek.
-- Dodawanie i edycja produktów z **lokalną kompresją zdjęć** (HTML5 Canvas,
-  max 600 px, jakość 0.6, konwersja do WebP/JPEG, zapis jako Base64 w bazie).
+  wydrukowane gramy, szacowany zarobek.
+- **Ustawienia sklepu**: cena za gram, tryb (kolejka / aktywny), baner informacyjny.
+- Dodawanie i edycja produktów (nazwa, opis, **waga w gramach**, stan, zdjęcie)
+  z **lokalną kompresją zdjęć** (HTML5 Canvas, max 600 px, jakość 0.6, WebP/JPEG,
+  zapis jako Base64 w bazie).
 - Edycja stanu magazynowego i usuwanie produktów.
-- Potężna tabela zamówień (ID, imię/klasa, produkt, ilość, data, status, link, akcje).
+- Tabela zamówień (ID, imię/klasa, produkty, waga/cena, data, status, link, akcje).
 - Zmiana statusu w locie (dropdown) z natychmiastową aktualizacją Firebase.
-- Anulowanie i usuwanie zamówień z wyborem powodu (modal) i przenoszeniem do archiwum.
+- Anulowanie i usuwanie zamówień z wyborem powodu (modal) i archiwum.
 - Przycisk "Kopiuj Link Śledzenia" do wysyłki uczniowi (np. przez Discord lub Messenger).
 
 ---
 
 ## Konfiguracja Firebase
 
-1. Przejdź do [konsoli Firebase](https://console.firebase.google.com/u/0/project/maslo-3d/overview)
-   i otwórz projekt **maslo-3d**.
-2. W menu **Build > Realtime Database** utwórz bazę danych w trybie testowym.
-3. W **Project settings (ikona trybika) > General > Your apps > Web app** dodaj aplikację
-   webową i skopiuj obiekt konfiguracyjny.
-4. Otwórz plik `index.html` i w samym nagłówku skryptu uzupełnij obiekt `firebaseConfig`:
+Firebase jest już skonfigurowane dla projektu **maslo-3d**:
+- aplikacja webowa `maslo3d-web` (prawdziwy `apiKey`, `appId`, `databaseURL` w `index.html`),
+- **Realtime Database** `maslo-3d-default-rtdb` (region `europe-west1`),
+- reguły publiczne (odczyt/zapis bez logowania) wdrożone z `database.rules.json`.
 
-```js
-const firebaseConfig = {
-  apiKey: "TU_WSTAW_API_KEY",
-  authDomain: "maslo-3d.firebaseapp.com",
-  databaseURL: "https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "maslo-3d",
-  storageBucket: "maslo-3d.appspot.com",
-  messagingSenderId: "TU_WSTAW_SENDER_ID",
-  appId: "TU_WSTAW_APP_ID"
-};
-```
+Węzły bazy można edytować w [konsoli Firebase](https://console.firebase.google.com/u/0/project/maslo-3d/database)
+lub w panelu administratora aplikacji (`?admin=true`).
 
-5. (Zalecane) Ustaw reguły bezpieczeństwa Realtime Database. W trybie publicznym
-   możesz zezwolić na odczyt i zapis:
-
-```json
-{
-  "rules": {
-    ".read": true,
-    ".write": true
-  }
-}
-```
-
-> Uwaga: powyższe reguły daja pełny publiczny dostep. W produkcji warto ograniczyć
-> zapis np. do wskazanych węzłów lub wprowadzić uwierzytelnianie administratora.
+> Uwaga: baza działa publicznie (zgodnie z założeniem projektu - bez logowania).
+> W produkcji warto ograniczyć zapis lub dodać uwierzytelnianie administratora.
 
 ---
 
 ## Struktura bazy danych
 
-Dane zapisywane sa w dwóch węzłach głównych:
+Dane zapisywane są w czterech węzłach głównych:
 
 ```
 maslo-3d-default-rtdb/
+├── settings/
+│   ├── pricePerGram   // cena za gram w zł (np. 0.20)
+│   ├── mode           // "queue" (tryb kolejki) | "active"
+│   └── banner         // komunikat na stronie (np. o wakacjach)
 ├── products/
 │   └── {productId}/
-│       ├── name         // nazwa produktu
-│       ├── desc         // opis
-│       ├── price        // cena jednostkowa (zł)
-│       ├── stock        // stan magazynowy (szt.)
-│       ├── image        // zdjęcie w formacie Base64 (skompresowane WebP/JPEG)
-│       └── createdAt    // znacznik czasu utworzenia
+│       ├── name       // nazwa produktu
+│       ├── desc       // opis
+│       ├── weight     // waga w gramach (podstawa wyceny)
+│       ├── stock      // stan magazynowy (szt.)
+│       ├── image      // zdjęcie Base64 (skompresowane WebP/JPEG)
+│       └── createdAt  // znacznik czasu utworzenia
 └── orders/
     └── {orderId}/
         ├── name          // imię ucznia
         ├── className     // klasa (opcjonalnie)
-        ├── productId     // identyfikator produktu
-        ├── productName   // nazwa produktu (kopia)
-        ├── qty           // zamawiana ilość
-        ├── price         // cena jednostkowa w momencie zamówienia
+        ├── delivery      // miejsce dostawy ("Szkoła")
+        ├── payment       // "Brak (rozliczenie przy odbiorze w szkole)"
+        ├── items[]       // [{productId, productName, weight, qty, pricePerGram}]
+        ├── totalWeight   // łączna waga (gramy)
+        ├── totalPrice    // łączna cena (zł)
         ├── status        // "W kolejce" | "Drukuje się" | "W drodze" | "Doręczone"
-        ├── queuedBacklog // flaga "BRAK W MAGAZYNIE" (true, gdy zamówienie w kolejce oczekujących)
+        ├── queuedBacklog // flaga "BRAK W MAGAZYNIE" (kolejka oczekujących)
         ├── createdAt     // znacznik czasu złożenia
         ├── isDeleted     // true = zamówienie anulowane/usunięte
         └── deleteReason  // powód anulowania
@@ -133,10 +112,9 @@ maslo-3d-default-rtdb/
 1. Wypchnij repozytorium na GitHub (`wegiel360/maslo3d`).
 2. W GitHub: **Settings > Pages**.
 3. W sekcji **Source** wybierz **Deploy from a branch**, gałąź `main`, katalog **/ (root)**.
-4. Zatwierdź. Strona bedzie dostepna pod adresem `https://wegiel360.github.io/maslo3d/`.
+4. Zatwierdź. Strona będzie dostępna pod adresem `https://wegiel360.github.io/maslo3d/`.
 
-Aplikacja to pojedynczy plik `index.html` w katalogu głównym, więc nie wymaga budowania
-ani dodatkowej konfiguracji base-href.
+Aplikacja to pojedynczy plik `index.html` w katalogu głównym, więc nie wymaga budowania.
 
 ---
 
@@ -144,9 +122,11 @@ ani dodatkowej konfiguracji base-href.
 
 ```
 maslo3d/
-├── index.html      # cała aplikacja (HTML + Tailwind + Firebase + JS)
-├── logo.png        # logo używane w interfejsie (nagłówek, ekrany)
-└── favicon.ico     # ikona strony w pasku przeglądarki
+├── index.html            # cała aplikacja (HTML + Tailwind + Firebase + JS)
+├── logo.png              # logo używane w interfejsie
+├── favicon.ico           # ikona strony
+├── firebase.json         # konfiguracja Firebase CLI (database)
+└── database.rules.json   # reguły bezpieczeństwa Realtime Database (publiczne)
 ```
 
 ## Licencja
