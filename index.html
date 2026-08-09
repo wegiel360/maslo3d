@@ -374,7 +374,7 @@
     /* --- Pozycja w kolejce --- */
     function getQueuePosition(orderId) {
       var myOrder = orders[orderId];
-      if (!myOrder) return { position: '?', total: '?', estimate: settings.deliveryEstimate || 'nieznany' };
+      if (!myOrder) return { position: '?', total: '?', estimate: 'nieznany' };
       var queued = Object.keys(orders)
         .filter(function (id) {
           var o = orders[id];
@@ -385,7 +385,7 @@
         });
       var position = queued.indexOf(orderId) + 1;
       var total = queued.length;
-      return { position: position, total: total, estimate: settings.deliveryEstimate || 'nieznany' };
+      return { position: position, total: total, estimate: myOrder.deliveryEstimate || 'nieznany' };
     }
 
     /* --- Rysowanie kodu QR w danym kontenerze --- */
@@ -1053,13 +1053,13 @@
        renderPrintQueue();
        renderStats();
        renderChart();
+       initBundleUI();
      }
 
     function renderAdminSettings() {
       document.getElementById('set-price').value = settings.pricePerGram || 0;
       document.getElementById('set-banner').value = settings.banner || '';
-      document.getElementById('set-mode').value = settings.mode || 'queue';
-      document.getElementById('set-delivery-estimate').value = settings.deliveryEstimate || '';
+      document.getElementById('set-mode').value = settings.mode || '';
     }
 
     function renderStats() {
@@ -1258,6 +1258,8 @@
           loadProductIntoForm(btn.dataset.editProduct);
         });
       });
+
+      populateBundleDropdown();
     }
 
     // Kompresja i konwersja zdjęcia do Base64 (WebP/JPEG) - max 600px, jakość 0.6
@@ -1309,6 +1311,86 @@
       reader.readAsDataURL(file);
     }
 
+    /* --- Bundle UI (zarządzanie pozycjami zestawu) --- */
+    let bundleItems = []; // [{productId, qty}]
+
+    function populateBundleDropdown() {
+      var sel = document.getElementById('bundle-add-product');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— wybierz produkt —</option>';
+      Object.keys(products).forEach(function (id) {
+        var p = products[id];
+        if (!p || p.isDeleted) return;
+        var opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = esc(p.name) + ' (' + (p.stock || 0) + ' szt.)';
+        sel.appendChild(opt);
+      });
+    }
+
+    function renderBundleList() {
+      var container = document.getElementById('bundle-items-list');
+      if (!container) return;
+      container.innerHTML = '';
+      if (bundleItems.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-500 italic">Brak pozycji. Dodaj produkt poniżej.</p>';
+        return;
+      }
+      bundleItems.forEach(function (item, idx) {
+        var p = products[item.productId];
+        var name = p ? p.name : '(nieznany)';
+        var row = document.createElement('div');
+        row.className = 'flex items-center gap-2 bg-base/60 border border-white/10 rounded-xl px-3 py-2';
+        row.innerHTML =
+          '<span class="flex-1 text-sm text-white">' + esc(name) + '</span>' +
+          '<input data-bundle-qty="' + idx + '" type="number" min="1" max="99" value="' + item.qty + '" ' +
+          'class="w-16 bg-panel border border-white/10 rounded-lg px-2 py-1 text-sm text-white text-center focus:border-accent focus:outline-none" />' +
+          '<button data-bundle-remove="' + idx + '" type="button" ' +
+          'class="text-red-400 hover:text-red-300 text-sm font-bold px-2 py-1">&times;</button>';
+        container.appendChild(row);
+      });
+      container.querySelectorAll('[data-bundle-qty]').forEach(function (el) {
+        el.addEventListener('change', function () {
+          var idx = parseInt(this.getAttribute('data-bundle-qty'), 10);
+          bundleItems[idx].qty = parseInt(this.value, 10) || 1;
+        });
+      });
+      container.querySelectorAll('[data-bundle-remove]').forEach(function (el) {
+        el.addEventListener('click', function () {
+          var idx = parseInt(this.getAttribute('data-bundle-remove'), 10);
+          bundleItems.splice(idx, 1);
+          renderBundleList();
+        });
+      });
+    }
+
+    function addBundleItem() {
+      var sel = document.getElementById('bundle-add-product');
+      var qtyInput = document.getElementById('bundle-add-qty');
+      var pid = sel.value;
+      if (!pid || !products[pid]) { alert('Wybierz produkt.'); return; }
+      var qty = parseInt(qtyInput.value, 10) || 1;
+      var existing = bundleItems.find(function (it) { return it.productId === pid; });
+      if (existing) { existing.qty += qty; } else { bundleItems.push({ productId: pid, qty: qty }); }
+      sel.value = '';
+      qtyInput.value = 1;
+      renderBundleList();
+    }
+
+    function resetBundleUI() {
+      bundleItems = [];
+      renderBundleList();
+      var sec = document.getElementById('bundle-section');
+      if (sec) sec.classList.add('hidden');
+      var cb = document.getElementById('product-bundle');
+      if (cb) cb.checked = false;
+    }
+
+    function initBundleUI() {
+      var addBtn = document.getElementById('bundle-add-btn');
+      if (addBtn) addBtn.addEventListener('click', addBundleItem);
+    }
+
     function loadProductIntoForm(id) {
       const p = products[id];
       if (!p) return;
@@ -1324,7 +1406,8 @@
       document.getElementById('product-whistle-freq').value = p.whistleFreq || '';
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
       document.getElementById('product-bundle').checked = !!(p.bundle && p.bundle.items);
-      document.getElementById('product-bundle-items').value = p.bundle ? JSON.stringify(p.bundle.items) : '[]';
+      bundleItems = (p.bundle && p.bundle.items) ? JSON.parse(JSON.stringify(p.bundle.items)) : [];
+      renderBundleList();
       document.getElementById('bundle-section').classList.toggle('hidden', !(p.bundle && p.bundle.items));
       const preview = document.getElementById('product-image-preview');
       const info = document.getElementById('product-image-info');
@@ -1355,7 +1438,8 @@
       const tags = tagsStr ? tagsStr.split(',').map(function (t) { return t.trim(); }).filter(Boolean) : [];
       let bundle = null;
       if (document.getElementById('product-bundle').checked) {
-        try { bundle = { items: JSON.parse(document.getElementById('product-bundle-items').value || '[]') }; } catch (err) { alert('Błędny format JSON w zestawie.'); return; }
+        if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
+        bundle = { items: bundleItems.slice() };
       }
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
@@ -1380,8 +1464,7 @@
       document.getElementById('product-image-data').value = '';
       document.getElementById('product-image-preview').classList.add('hidden');
       document.getElementById('product-image-info').textContent = '';
-      document.getElementById('product-bundle-items').value = '[]';
-      document.getElementById('bundle-section').classList.add('hidden');
+      resetBundleUI();
       document.getElementById('admin-form-title').textContent = 'Dodaj nowy produkt';
       document.getElementById('admin-form-reset').textContent = 'Wyczyść';
     }
@@ -1392,11 +1475,9 @@
       const pricePerGram = parseFloat(document.getElementById('set-price').value);
       const banner = document.getElementById('set-banner').value.trim();
       const mode = document.getElementById('set-mode').value;
-      const deliveryEstimate = document.getElementById('set-delivery-estimate').value.trim();
-
       if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawną cenę za gram (0 lub więcej).'); return; }
 
-      db.collection('settings').doc('main').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, deliveryEstimate: deliveryEstimate, adminPasswordHash: settings.adminPasswordHash || '' })
+      db.collection('settings').doc('main').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, adminPasswordHash: settings.adminPasswordHash || '' })
         .then(function () { flash('Ustawienia zapisane.'); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
@@ -1419,14 +1500,14 @@
       });
 
       if (active.length === 0) {
-        tbody.innerHTML += '<tr><td colspan="8" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
+        tbody.innerHTML += '<tr><td colspan="9" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
       } else {
         active.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
       }
 
       if (archived.length > 0) {
         tbody.innerHTML +=
-          '<tr class="border-t border-white/10"><td colspan="8" class="pt-6 pb-2">' +
+          '<tr class="border-t border-white/10"><td colspan="9" class="pt-6 pb-2">' +
           '  <p class="text-xs uppercase tracking-wide text-slate-500 font-bold">Archiwum (anulowane / usunięte)</p>' +
           '</td></tr>';
         archived.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, true)); });
@@ -1465,6 +1546,11 @@
           : '<select data-status-id="' + id + '" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center">' + statusOptions + '</select>') +
         '</td>' +
         '<td class="py-3 px-3">' +
+        (isArchived
+          ? '<span class="text-xs text-slate-500">' + esc(o.deliveryEstimate || '—') + '</span>'
+          : '<input data-estimate-id="' + id + '" type="text" value="' + esc(o.deliveryEstimate || '') + '" placeholder="np. jutro 14:00" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white w-32 focus:border-accent focus:outline-none" />') +
+        '</td>' +
+        '<td class="py-3 px-3">' +
         '  <button data-copy-link="' + id + '" title="Kopiuj link śledzenia" class="text-accent hover:text-sky-300 text-sm px-2 py-1">Kopiuj link</button>' +
         '</td>' +
         '<td class="py-3 px-3">' +
@@ -1478,6 +1564,17 @@
           db.collection('orders').doc(id).update({ status: this.value })
             .then(function () { flash('Status zaktualizowany.'); })
             .catch(function (e) { alert('Błąd: ' + e.message); });
+        });
+        var estimateInput = tr.querySelector('[data-estimate-id]');
+        var estimateTimeout = null;
+        estimateInput.addEventListener('input', function () {
+          var val = this.value.trim();
+          clearTimeout(estimateTimeout);
+          estimateTimeout = setTimeout(function () {
+            db.collection('orders').doc(id).update({ deliveryEstimate: val })
+              .then(function () { flash('Szacowany czas dostawy zapisany.'); })
+              .catch(function (e) { alert('Błąd: ' + e.message); });
+          }, 800);
         });
         tr.querySelector('[data-cancel]').addEventListener('click', function () { openCancelModal(id); });
       }
@@ -1912,11 +2009,6 @@
               <input id="set-banner" type="text"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
-            <div class="sm:col-span-2 lg:col-span-1">
-              <label class="block text-sm text-slate-400 mb-1">Szacowany czas dostawy</label>
-              <input id="set-delivery-estimate" type="text"
-                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
-            </div>
             <div class="lg:col-span-3 flex items-end">
               <button type="submit"
                 class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz ustawienia</button>
@@ -1966,7 +2058,7 @@
                 </div>
               </div>
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Czas ręczny</label>
+                <label class="block text-sm text-slate-400 mb-1">Czas zmierzony</label>
                 <div class="flex gap-2">
                   <input id="product-manual-time-h" type="number" min="0" max="999"
                     class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
@@ -1995,9 +2087,17 @@
                 <span class="text-sm text-slate-400">Zestaw (bundle)</span>
               </label>
               <div id="bundle-section" class="hidden mt-2">
-                <label class="block text-sm text-slate-400 mb-1">Pozycje zestawu (JSON)</label>
-                <textarea id="product-bundle-items" rows="3" placeholder='[{"productId":"xxx","qty":1}]'
-                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none"></textarea>
+                <p class="text-sm text-slate-400 mb-2">Pozycje zestawu</p>
+                <div id="bundle-items-list" class="space-y-2 mb-3"></div>
+                <div class="flex gap-2">
+                  <select id="bundle-add-product"
+                    class="flex-1 bg-base border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-accent focus:outline-none">
+                  </select>
+                  <input id="bundle-add-qty" type="number" min="1" max="99" value="1" placeholder="Ilość"
+                    class="w-20 bg-base border border-white/10 rounded-xl px-3 py-2 text-sm text-white text-center focus:border-accent focus:outline-none" />
+                  <button id="bundle-add-btn" type="button"
+                    class="px-4 py-2 rounded-xl bg-accent/20 hover:bg-accent/30 text-accent text-sm font-semibold transition-all">+ Dodaj</button>
+                </div>
               </div>
             </div>
             <div>
@@ -2036,7 +2136,7 @@
       <section class="bg-panel border border-white/10 rounded-2xl p-6 mb-10">
         <h3 class="text-lg font-bold text-white mb-4">Zamówienia</h3>
         <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm border-collapse min-w-[820px]">
+          <table class="w-full text-left text-sm border-collapse min-w-[1020px]">
             <thead>
               <tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">
                 <th class="py-3 px-3">ID</th>
@@ -2045,6 +2145,7 @@
                 <th class="py-3 px-3">Waga / Cena</th>
                 <th class="py-3 px-3">Data</th>
                 <th class="py-3 px-3">Status</th>
+                <th class="py-3 px-3">Szac. czas dostawy</th>
                 <th class="py-3 px-3">Link</th>
                 <th class="py-3 px-3">Akcje</th>
               </tr>
