@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f1a" />
-  <title>Maslo3D - wydruki 3D</title>
-  <meta name="description" content="Maslo3D - system zamówień wydruków 3D dla społeczności szkolnej. Wycena za gram, kolejka oczekujących i śledzenie zamówienia." />
+  <title>Masło3D - wydruki 3D</title>
+  <meta name="description" content="Masło3D - system zamówień wydruków 3D dla społeczności szkolnej. Wycena za gram, kolejka oczekujących i śledzenie zamówienia." />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="logo.png" />
 
@@ -41,7 +41,7 @@
 
   <!-- ============================================================
        F I R E B A S E  (Compat SDK - Realtime Database)
-       Prawdziwa konfiguracja projektu Maslo3D (maslo-3d).
+       Prawdziwa konfiguracja projektu Masło3D (maslo-3d).
        ============================================================ -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -141,6 +141,9 @@
 
     // Koszyk (productId -> ilość), zapisywany lokalnie
     let cart = {};
+    // Krok koszyka: 1=lista, 2=zamówienie, 3=kolejka
+    let cartStep = 1;
+    let lastOrderData = null; // dane ostatnio złożonego zamówienia (dla kroku 3)
 
     // Klucz do przechowywania koszyka w localStorage
     const CART_KEY = 'maslo3d_cart';
@@ -278,15 +281,47 @@
     }
 
     /* --- Formatowanie czasu druku --- */
-    function fmtTime(sec) {
+    /* --- Formatowanie czasu: mini (2:56) --- */
+    function fmtTimeMini(sec) {
       if (!sec && sec !== 0) return '—';
       sec = Math.round(sec);
       var h = Math.floor(sec / 3600);
       var m = Math.floor((sec % 3600) / 60);
-      if (h > 0) return h + 'h ' + m + 'min';
+      return h + ':' + String(m).padStart(2, '0');
+    }
+
+    /* --- Formatowanie czasu: krótki (2h 56m / 21m) --- */
+    function fmtTimeShort(sec) {
+      if (!sec && sec !== 0) return '—';
+      sec = Math.round(sec);
+      var h = Math.floor(sec / 3600);
+      var m = Math.floor((sec % 3600) / 60);
+      if (h > 0) return h + 'h ' + m + 'm';
       if (m > 0) return m + 'min';
       return sec + 's';
     }
+
+    /* --- Formatowanie czasu: długi (2 godziny i 56 minut / 21 minut) --- */
+    function fmtTimeLong(sec) {
+      if (!sec && sec !== 0) return '—';
+      sec = Math.round(sec);
+      var h = Math.floor(sec / 3600);
+      var m = Math.floor((sec % 3600) / 60);
+      var hWord, mWord;
+      if (h === 1) hWord = 'godzina';
+      else if (h >= 2 && h <= 4) hWord = 'godziny';
+      else hWord = 'godzin';
+      if (m === 1) mWord = 'minuta';
+      else if (m >= 2 && m <= 4) mWord = 'minuty';
+      else mWord = 'minut';
+      if (h > 0 && m > 0) return h + ' ' + hWord + ' i ' + m + ' ' + mWord;
+      if (h > 0) return h + ' ' + hWord;
+      if (m > 0) return m + ' ' + mWord;
+      return sec + ' sekund';
+    }
+
+    /* --- fmtTime = alias fmtTimeShort (kompatybilność) --- */
+    function fmtTime(sec) { return fmtTimeShort(sec); }
 
     /* --- Odtwarzanie gwizdka (Web Audio) --- */
     var whistleCtx = null;
@@ -334,6 +369,23 @@
         if (p && p.printTimeSec) total += p.printTimeSec * ci.qty;
       });
       return total;
+    }
+
+    /* --- Pozycja w kolejce --- */
+    function getQueuePosition(orderId) {
+      var myOrder = orders[orderId];
+      if (!myOrder) return { position: '?', total: '?', estimate: settings.deliveryEstimate || 'nieznany' };
+      var queued = Object.keys(orders)
+        .filter(function (id) {
+          var o = orders[id];
+          return o && !o.isDeleted && (o.status === 'W kolejce' || o.status === 'Drukuje się');
+        })
+        .sort(function (a, b) {
+          return (orders[a].createdAt || 0) - (orders[b].createdAt || 0);
+        });
+      var position = queued.indexOf(orderId) + 1;
+      var total = queued.length;
+      return { position: position, total: total, estimate: settings.deliveryEstimate || 'nieznany' };
     }
 
     /* --- Rysowanie kodu QR w danym kontenerze --- */
@@ -526,138 +578,224 @@
 
     /* --- Koszyk (drawer) --- */
     function openCart() {
-      renderCart();
+      cartStep = 1;
+      renderCartStep();
       document.getElementById('cart-drawer').classList.remove('hidden');
     }
     function closeCart() {
       document.getElementById('cart-drawer').classList.add('hidden');
+      cartStep = 1;
     }
 
-    function renderCart() {
-      const list = document.getElementById('cart-items');
-      list.innerHTML = '';
-      const ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
+    function renderCartStep() {
+      var header = document.getElementById('cart-header');
+      var body = document.getElementById('cart-body');
+      var footer = document.getElementById('cart-footer');
 
-      if (ids.length === 0) {
-        list.innerHTML = '<p class="text-center text-slate-500 py-8">Twój koszyk jest pusty.</p>';
-      } else {
-        ids.forEach(function (id) {
-          const p = products[id];
-          const qty = cart[id];
-          const line = document.createElement('div');
-          line.className = 'flex items-center gap-3 py-3 border-b border-white/5';
-          line.innerHTML =
-            '<div class="w-12 h-12 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
-            (p.image && p.image.length > 20
-              ? '<img src="' + esc(p.image) + '" class="w-full h-full object-cover" alt="" />'
-              : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
-            '</div>' +
-            '<div class="flex-1 min-w-0">' +
-            '  <p class="font-medium text-white truncate">' + esc(p.name) + '</p>' +
-            '  <p class="text-xs text-slate-500">' + fmtTime(p.printTimeSec) + ' druku x ' + fmtPerGram(settings.pricePerGram) + '</p>' +
-            '</div>' +
-            '<div class="flex items-center gap-1">' +
-            '  <button data-cart-dec="' + id + '" class="w-7 h-7 rounded-lg bg-base border border-white/10 text-white hover:border-accent">-</button>' +
-            '  <span class="w-8 text-center text-white font-medium">' + qty + '</span>' +
-            '  <button data-cart-inc="' + id + '" class="w-7 h-7 rounded-lg bg-base border border-white/10 text-white hover:border-accent">+</button>' +
-            '</div>' +
-            '<div class="w-20 text-right">' +
-            '  <p class="text-white font-semibold">' + fmtPrice(productPrice(p) * qty) + '</p>' +
-            '  <button data-cart-del="' + id + '" class="text-xs text-red-400 hover:text-red-300">Usuń</button>' +
-            '</div>';
-
-          list.appendChild(line);
-        });
+      if (cartStep === 1) {
+        header.innerHTML = '<h3 class="text-lg font-bold text-white">Koszyk</h3>';
+        renderCart(body);
+        renderCartFooter(footer);
+      } else if (cartStep === 2) {
+        header.innerHTML = '<button id="cart-back" class="text-slate-400 hover:text-white text-sm">&larr; Koszyk</button><h3 class="text-lg font-bold text-white">Złóż zamówienie</h3>';
+        renderCheckout(body);
+        renderCheckoutFooter(footer);
+        document.getElementById('cart-back').addEventListener('click', function () { cartStep = 1; renderCartStep(); });
+      } else if (cartStep === 3) {
+        header.innerHTML = '';
+        renderQueue(body);
+        renderQueueFooter(footer);
       }
+    }
 
-      // Zdarzenia
-      list.querySelectorAll('[data-cart-inc]').forEach(function (b) {
-        b.addEventListener('click', function () { cart[b.dataset.cartInc]++; saveCart(); renderCart(); });
+    function renderCart(container) {
+      var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
+      if (ids.length === 0) {
+        container.innerHTML = '<p class="text-center text-slate-500 py-8">Twój koszyk jest pusty.</p>';
+        return;
+      }
+      var html = '';
+      ids.forEach(function (id) {
+        var p = products[id];
+        var qty = cart[id];
+        html += '<div class="flex items-center gap-3 py-3 border-b border-white/5">' +
+          '<div class="w-10 h-10 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
+          (p.image && p.image.length > 20
+            ? '<img src="' + esc(p.image) + '" class="w-full h-full object-cover" alt="" />'
+            : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
+          '</div>' +
+          '<div class="flex-1 min-w-0">' +
+          '  <p class="font-medium text-white text-sm truncate">' + esc(p.name) + '</p>' +
+          '  <p class="text-xs text-slate-500">' + fmtTimeMini(p.printTimeSec) + '</p>' +
+          '</div>' +
+          '<div class="flex items-center gap-1">' +
+          '  <button data-cart-dec="' + id + '" class="w-7 h-7 rounded-lg bg-base border border-white/10 text-white hover:border-accent">-</button>' +
+          '  <span class="w-8 text-center text-white font-medium text-sm">' + qty + '</span>' +
+          '  <button data-cart-inc="' + id + '" class="w-7 h-7 rounded-lg bg-base border border-white/10 text-white hover:border-accent">+</button>' +
+          '</div>' +
+          '<div class="w-16 text-right">' +
+          '  <p class="text-white font-semibold text-sm">' + fmtPrice(productPrice(p) * qty) + '</p>' +
+          '  <button data-cart-del="' + id + '" class="text-xs text-red-400 hover:text-red-300">Usuń</button>' +
+          '</div></div>';
       });
-      list.querySelectorAll('[data-cart-dec]').forEach(function (b) {
-        const id = b.dataset.cartDec;
+      container.innerHTML = html;
+
+      container.querySelectorAll('[data-cart-inc]').forEach(function (b) {
+        b.addEventListener('click', function () { cart[b.dataset.cartInc]++; saveCart(); renderCartStep(); });
+      });
+      container.querySelectorAll('[data-cart-dec]').forEach(function (b) {
+        var id = b.dataset.cartDec;
         cart[id] = (cart[id] || 1) - 1;
         if (cart[id] <= 0) delete cart[id];
-        saveCart(); renderCart();
+        saveCart(); renderCartStep();
       });
-      list.querySelectorAll('[data-cart-del]').forEach(function (b) {
+      container.querySelectorAll('[data-cart-del]').forEach(function (b) {
         delete cart[b.dataset.cartDel];
-        saveCart(); renderCart();
+        saveCart(); renderCartStep();
       });
+    }
 
-      // Podsumowanie
-      const s = cartSummary();
-      document.getElementById('cart-count').textContent = s.count + ' szt.';
-      document.getElementById('cart-total').textContent = fmtPrice(s.price);
-      document.getElementById('cart-checkout').disabled = ids.length === 0;
+    function renderCartFooter(container) {
+      var s = cartSummary();
+      var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
+      container.innerHTML =
+        '<div class="flex justify-between text-base font-bold text-white"><span>Razem</span><span>' + fmtPrice(s.price) + '</span></div>' +
+        '<button id="cart-next" ' + (ids.length === 0 ? 'disabled' : '') +
+        ' class="w-full mt-2 py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Dalej &rarr;</button>';
+      var btn = document.getElementById('cart-next');
+      if (btn) btn.addEventListener('click', function () {
+        if (cartSummary().count === 0) { flash('Koszyk jest pusty'); return; }
+        cartStep = 2;
+        renderCartStep();
+      });
     }
 
     function updateCartBadge() {
-      const s = cartSummary();
-      const badge = document.getElementById('cart-badge');
+      var s = cartSummary();
+      var badge = document.getElementById('cart-badge');
       badge.textContent = s.count;
       badge.classList.toggle('hidden', s.count === 0);
     }
 
-    /* --- Modal zamówienia (checkout) --- */
-    function openCheckout() {
-      const s = cartSummary();
-      if (s.count === 0) { flash('Koszyk jest pusty'); return; }
-      renderCart();
-      // Wypełnij podsumowanie w modalu
-      document.getElementById('checkout-count').textContent = s.count + ' szt.';
-      document.getElementById('checkout-total').textContent = fmtPrice(s.price);
-      document.getElementById('checkout-mode-note').textContent =
-        settings.mode === 'queue'
-          ? 'Tryb zbierania kolejki - zamówienie zostanie dodane do kolejki oczekujących. Stock nie jest odejmowany.'
-          : 'Zamówienie trafi do kolejki i zostanie przygotowane do druku. Stock zostanie zmniejszony.';
-      document.getElementById('checkout-modal').classList.remove('hidden');
-      document.getElementById('checkout-modal').querySelector('form').reset();
+    function renderCheckout(container) {
+      var s = cartSummary();
+      var modeNote = settings.mode === 'queue'
+        ? 'Tryb zbierania kolejki — zamówienie poczeka na realizację.'
+        : 'Zamówienie trafi do druku.';
+
+      container.innerHTML =
+        '<div class="space-y-4">' +
+        '  <div class="bg-base/60 border border-white/10 rounded-xl p-4 text-sm">' +
+        '    <div class="flex justify-between"><span class="text-slate-400">Płatność</span><span class="text-white font-medium">Brak (przy odbiorze)</span></div>' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block text-sm text-slate-400 mb-1">Dostawa</label>' +
+        '    <div class="flex gap-2">' +
+        '      <span class="bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm flex-shrink-0">Szkoła</span>' +
+        '      <input id="checkout-delivery-detail" type="text"' +
+        '        class="flex-1 bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none text-sm" />' +
+        '    </div>' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block text-sm text-slate-400 mb-1">Imię *</label>' +
+        '    <input id="checkout-name" type="text" required' +
+        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block text-sm text-slate-400 mb-1">Inicjał nazwiska (opcjonalnie)</label>' +
+        '    <input id="checkout-initial" type="text" maxlength="1"' +
+        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
+        '  </div>' +
+        '  <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">' +
+        '    <p><strong>Podawanie imienia i inicjału jest potrzebne TYLKO do procesu dostawy.</strong></p>' +
+        '  </div>' +
+        '  <p class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2">' + esc(modeNote) + '</p>' +
+        '  <div id="checkout-message"></div>' +
+        '</div>';
     }
-    function closeCheckout() {
-      document.getElementById('checkout-modal').classList.add('hidden');
+
+    function renderCheckoutFooter(container) {
+      container.innerHTML =
+        '<button id="cart-submit-order"' +
+        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Wejdź do kolejki</button>';
+      document.getElementById('cart-submit-order').addEventListener('click', handleCheckout);
+    }
+
+    function renderQueue(container) {
+      if (!lastOrderData) {
+        container.innerHTML = '<p class="text-center text-slate-500 py-8">Brak danych zamówienia.</p>';
+        return;
+      }
+      var o = lastOrderData;
+      var q = getQueuePosition(o.orderId);
+      var link = trackingLink(o.orderCode);
+      container.innerHTML =
+        '<div class="text-center py-4">' +
+        '  <div class="mx-auto w-14 h-14 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mb-4">' +
+        '    <svg class="w-7 h-7 text-emerald-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+        '      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />' +
+        '    </svg>' +
+        '  </div>' +
+        '  <h3 class="text-xl font-bold text-white">Zamówienie #' + esc(o.orderCode) + '</h3>' +
+        '  <p class="text-slate-400 mt-1">Dziękujemy, ' + esc(o.name) + '!</p>' +
+        '  <div class="mt-6 space-y-3">' +
+        '    <div class="bg-base/60 border border-white/10 rounded-xl p-4">' +
+        '      <p class="text-sm text-slate-400">Jesteś <span class="text-white font-bold">' + q.position + '.</span> w kolejce</p>' +
+        '      <p class="text-sm text-slate-400">(' + q.total + ' osób w kolejce)</p>' +
+        '    </div>' +
+        '    <div class="bg-base/60 border border-white/10 rounded-xl p-4">' +
+        '      <p class="text-xs text-slate-500 mb-1">Szacowany czas dostawy</p>' +
+        '      <p class="text-white font-medium">' + esc(q.estimate) + '</p>' +
+        '    </div>' +
+        '  </div>' +
+        '  <a href="' + esc(link) + '" class="mt-5 inline-block text-accent hover:text-sky-300 font-semibold text-sm">Śledź zamówienie &rarr;</a>' +
+        '</div>';
+    }
+
+    function renderQueueFooter(container) {
+      container.innerHTML =
+        '<button id="cart-close-queue"' +
+        ' class="w-full py-3 rounded-xl font-bold bg-white/10 hover:bg-white/15 text-white transition-all">Zamknij</button>';
+      document.getElementById('cart-close-queue').addEventListener('click', closeCart);
     }
 
     // Złożenie zamówienia (koszyk -> Firebase)
     function handleCheckout(e) {
-      e.preventDefault();
-      const name = document.getElementById('checkout-name').value.trim();
-      const className = document.getElementById('checkout-class').value.trim();
-      const delivery = document.getElementById('checkout-delivery').value;
-      const msg = document.getElementById('checkout-message');
+      if (e) e.preventDefault();
+      var name = document.getElementById('checkout-name').value.trim();
+      var initial = (document.getElementById('checkout-initial').value || '').trim().toUpperCase();
+      var deliveryDetail = (document.getElementById('checkout-delivery-detail').value || '').trim();
+      var msg = document.getElementById('checkout-message');
 
-      // Imię i klasa są wymagane - bez nich zamówienie może być opóźnione lub anulowane
-      if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj swoje imię.</p>'; return; }
-      if (!className) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj klasę - bez niej zamówienie może być opóźnione lub anulowane.</p>'; return; }
+      if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj imię.</p>'; return; }
 
-      const s = cartSummary();
+      var displayName = initial ? name + ' ' + initial + '.' : name;
+
+      var s = cartSummary();
       if (s.count === 0) { msg.innerHTML = '<p class="text-red-300 text-sm">Koszyk jest pusty.</p>'; return; }
 
-      // Antyspam: limit 1 zamówienie na 2 minuty
-      const cooldown = orderCooldownMs();
+      var cooldown = orderCooldownMs();
       if (cooldown > 0) {
-        const sec = Math.ceil(cooldown / 1000);
+        var sec = Math.ceil(cooldown / 1000);
         msg.innerHTML = '<p class="text-amber-300 text-sm">Odczekaj jeszcze ' + sec + ' s przed złożeniem kolejnego zamówienia.</p>';
         return;
       }
 
-      // Antyspam: maksymalnie 6 różnych ofert w jednym zamówieniu
-      const distinctCount = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; }).length;
+      var distinctCount = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; }).length;
       if (distinctCount > ORDER_MAX_ITEMS) {
         msg.innerHTML = '<p class="text-red-300 text-sm">Maksymalnie ' + ORDER_MAX_ITEMS + ' różnych ofert w jednym zamówieniu.</p>';
         return;
       }
 
-      const orderId = genUUID();
-      const orderCode = genOrderCode();
+      var orderId = genUUID();
+      var orderCode = genOrderCode();
 
-      // Budowa pozycji zamówienia na podstawie koszyka
-      const items = [];
-      let totalWeight = 0, totalPrice = 0, backlog = false;
-      const expanded = expandBundles(Object.keys(cart).map(function (id) { return { productId: id, qty: cart[id] }; }));
+      var items = [];
+      var totalWeight = 0, totalPrice = 0, backlog = false;
+      var expanded = expandBundles(Object.keys(cart).map(function (id) { return { productId: id, qty: cart[id] }; }));
       expanded.forEach(function (ci) {
-        const p = products[ci.productId];
-        const qty = ci.qty;
+        var p = products[ci.productId];
+        var qty = ci.qty;
         if (!p || qty <= 0) return;
         if (!p.stock || p.stock <= 0 || qty > p.stock) backlog = true;
         items.push({
@@ -672,12 +810,14 @@
         totalPrice += (p.printTimeSec || 0) * qty * settings.pricePerGram;
       });
 
-      const estPrintSec = estPrintTime(expanded);
+      var estPrintSec = estPrintTime(expanded);
+      var delivery = 'Szkoła';
+      if (deliveryDetail) delivery += ' — ' + deliveryDetail;
 
-      const order = {
-        name: name,
-        className: className,
-        delivery: delivery || DELIVERY,
+      var order = {
+        name: displayName,
+        className: '',
+        delivery: delivery,
         payment: 'Brak (rozliczenie przy odbiorze w szkole)',
         items: items,
         totalWeight: totalWeight,
@@ -691,70 +831,35 @@
         deleteReason: ''
       };
 
-      // Aktualizacja: zamówienie + zmniejszenie stanu magazynowego (TYLKO w trybie active)
-      const updates = {};
+      var updates = {};
       updates['/orders/' + orderId] = order;
       if (settings.mode === 'active') {
         items.forEach(function (it) {
-          const p = products[it.productId];
-          const decrement = Math.min(it.qty, p.stock || 0);
+          var p = products[it.productId];
+          var decrement = Math.min(it.qty, p.stock || 0);
           if (decrement > 0) {
             updates['/products/' + it.productId + '/stock'] = (p.stock || 0) - decrement;
           }
         });
       }
 
+      msg.innerHTML = '<p class="text-slate-400 text-sm">Wysyłanie...</p>';
+      var submitBtn = document.getElementById('cart-submit-order');
+      if (submitBtn) submitBtn.disabled = true;
+
       db.ref().update(updates)
         .then(function () {
           cart = {};
           saveCart();
-          markOrderPlaced(); // zapis czasu zamówienia (antyspam)
-          closeCheckout();
-          showOrderSummary(name, order, backlog);
+          markOrderPlaced();
+          lastOrderData = { orderId: orderId, orderCode: orderCode, name: displayName, estPrintSec: estPrintSec };
+          cartStep = 3;
+          renderCartStep();
         })
         .catch(function (err) {
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
+          if (submitBtn) submitBtn.disabled = false;
         });
-    }
-
-    // Karta podsumowania z unikalnym linkiem i kodem QR
-    function showOrderSummary(name, order, backlog) {
-      const link = trackingLink(order.orderCode);
-      const wrap = document.getElementById('order-summary');
-      wrap.classList.remove('hidden');
-      wrap.innerHTML =
-        '<div class="text-center">' +
-        '  <div class="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mb-4">' +
-        '    <svg class="w-8 h-8 text-emerald-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
-        '      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />' +
-        '    </svg>' +
-        '  </div>' +
-        '  <h3 class="text-2xl font-bold text-white">Dziękujemy, ' + esc(name) + '!</h3>' +
-        '  <p class="text-slate-400 mt-1">Twoje zamówienie trafiło do kolejki.</p>' +
-        '  <div class="mt-3 inline-block bg-accent/15 border border-accent/40 text-accent font-bold text-2xl px-6 py-2 rounded-xl tracking-widest">' + esc(order.orderCode) + '</div>' +
-        (backlog
-          ? '<p class="mt-3 text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-2 text-sm font-semibold">BRAK W MAGAZYNIE - zamawiając, trafiasz do kolejki oczekujących</p>'
-          : '') +
-        '  <p class="mt-2 text-sm text-slate-400">Szacowany czas druku: ' + fmtTime(order.estPrintSec) + '</p>' +
-        '  <div class="mt-5 text-left bg-base/60 border border-white/10 rounded-xl p-4">' +
-        '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Unikalny link do śledzenia</p>' +
-        '    <div class="flex items-center gap-2">' +
-        '      <input type="text" readonly value="' + esc(link) + '" class="flex-1 bg-panel border border-white/10 rounded-lg px-3 py-2 text-sm text-accent" onfocus="this.select()" />' +
-        '      <button id="summary-copy"' +
-        '        class="shrink-0 bg-accent hover:bg-sky-400 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm">Kopiuj link</button>' +
-        '    </div>' +
-        '    <p class="text-xs text-slate-500 mt-2">Zapisz link lub zeskanuj kod QR - pozwoli Ci śledzić status wydruku.</p>' +
-        '    <div class="mt-4 flex justify-center bg-white rounded-xl p-3"><div id="summary-qr"></div></div>' +
-        '  </div>' +
-        '  <a href="' + link + '" class="mt-5 inline-block bg-accent hover:bg-sky-400 text-slate-900 font-semibold px-6 py-3 rounded-xl transition-all">Śledź zamówienie</a>' +
-        '</div>';
-
-      renderQR('summary-qr', link);
-      document.getElementById('summary-copy').addEventListener('click', function () {
-        const b = this;
-        copyText(link).then(function () { b.textContent = 'Skopiowano'; });
-      });
-      wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
 
     /* --- Modal udostępniania (QR strony) --- */
@@ -919,7 +1024,7 @@
         '    <div class="mt-3 border-t border-white/10 pt-3 text-sm">' +
         itemsHtml +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Dostawa</span><span class="text-white">' + esc(order.delivery || 'Szkoła') + '</span></div>' +
-        '      <div class="flex justify-between py-1"><span class="text-slate-400">Szacowany czas druku</span><span class="text-white">' + fmtTime(order.estPrintSec) + '</span></div>' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">Szacowany czas druku</span><span class="text-white">' + fmtTimeLong(order.estPrintSec) + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Płatność</span><span class="text-white">' + esc(order.payment || 'Brak (przy odbiorze)') + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Razem</span><span class="text-white font-bold">' + fmtPrice(order.totalPrice) + '</span></div>' +
         '    </div>' +
@@ -953,6 +1058,7 @@
       document.getElementById('set-price').value = settings.pricePerGram || 0;
       document.getElementById('set-banner').value = settings.banner || '';
       document.getElementById('set-mode').value = settings.mode || 'queue';
+      document.getElementById('set-delivery-estimate').value = settings.deliveryEstimate || '';
     }
 
     function renderStats() {
@@ -1209,8 +1315,10 @@
       document.getElementById('product-name').value = p.name || '';
       document.getElementById('product-desc').value = p.desc || '';
       document.getElementById('product-weight').value = p.weight || '';
-      document.getElementById('product-print-time').value = p.printTimeSec || '';
-      document.getElementById('product-manual-time').value = p.manualTimeSec || '';
+      document.getElementById('product-print-time-h').value = Math.floor((p.printTimeSec || 0) / 3600) || '';
+      document.getElementById('product-print-time-m').value = Math.floor(((p.printTimeSec || 0) % 3600) / 60) || '';
+      document.getElementById('product-manual-time-h').value = Math.floor((p.manualTimeSec || 0) / 3600) || '';
+      document.getElementById('product-manual-time-m').value = Math.floor(((p.manualTimeSec || 0) % 3600) / 60) || '';
       document.getElementById('product-stock').value = p.stock || 0;
       document.getElementById('product-whistle-freq').value = p.whistleFreq || '';
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
@@ -1237,8 +1345,8 @@
       const name = document.getElementById('product-name').value.trim();
       const desc = document.getElementById('product-desc').value.trim();
       const weight = parseFloat(document.getElementById('product-weight').value) || 0;
-      const printTimeSec = parseFloat(document.getElementById('product-print-time').value) || 0;
-      const manualTimeSec = parseFloat(document.getElementById('product-manual-time').value) || 0;
+      const printTimeSec = (parseInt(document.getElementById('product-print-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-print-time-m').value, 10) || 0) * 60;
+      const manualTimeSec = (parseInt(document.getElementById('product-manual-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-manual-time-m').value, 10) || 0) * 60;
       const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
       const image = document.getElementById('product-image-data').value;
       const whistleFreq = parseFloat(document.getElementById('product-whistle-freq').value) || 0;
@@ -1283,10 +1391,11 @@
       const pricePerGram = parseFloat(document.getElementById('set-price').value);
       const banner = document.getElementById('set-banner').value.trim();
       const mode = document.getElementById('set-mode').value;
+      const deliveryEstimate = document.getElementById('set-delivery-estimate').value.trim();
 
       if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawną cenę za gram (0 lub więcej).'); return; }
 
-      db.ref('settings').set({ pricePerGram: pricePerGram, mode: mode, banner: banner })
+      db.ref('settings').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, deliveryEstimate: deliveryEstimate, adminPasswordHash: settings.adminPasswordHash || '' })
         .then(function () { flash('Ustawienia zapisane.'); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
@@ -1455,9 +1564,33 @@
       const stored = (settings.adminPasswordHash || '').toLowerCase();
 
       if (!stored) {
-        err.textContent = 'Panel nie został skonfigurowany (brak hasła w bazie).';
+        const confirmGroup = document.getElementById('admin-pass-confirm-group');
+        const passConfirm = document.getElementById('admin-pass-confirm');
+        if (confirmGroup.classList.contains('hidden')) {
+          confirmGroup.classList.remove('hidden');
+          err.textContent = 'Ustaw hasło do panelu. Podaj je dwukrotnie.';
+          return;
+        }
+        const pass2 = passConfirm.value;
+        if (!pass) { err.textContent = 'Podaj hasło.'; return; }
+        if (pass !== pass2) { err.textContent = 'Hasła nie są identyczne.'; return; }
+        err.textContent = '';
+        btn.disabled = true;
+        try {
+          const hash = await sha256(pass);
+          await db.ref('settings/adminPasswordHash').set(hash);
+          settings.adminPasswordHash = hash;
+          sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
+          flash('Hasło ustawione. Zalogowano.');
+          route();
+        } catch (ex) {
+          err.textContent = 'Błąd zapisu: ' + ex.message;
+        } finally {
+          btn.disabled = false;
+        }
         return;
       }
+
       err.textContent = '';
       btn.disabled = true;
       try {
@@ -1492,17 +1625,11 @@
 
       // Sklep
       document.getElementById('cart-open').addEventListener('click', openCart);
-      document.getElementById('cart-close').addEventListener('click', closeCart);
-      document.getElementById('cart-checkout').addEventListener('click', openCheckout);
       document.getElementById('share-open').addEventListener('click', openShareModal);
       document.getElementById('share-close').addEventListener('click', closeShareModal);
       document.getElementById('track-lookup-open').addEventListener('click', openTrackLookup);
       document.getElementById('track-lookup-close').addEventListener('click', closeTrackLookup);
       document.getElementById('track-lookup-form').addEventListener('submit', handleTrackLookup);
-
-      // Checkout
-      document.getElementById('checkout-form').addEventListener('submit', handleCheckout);
-      document.getElementById('checkout-close').addEventListener('click', closeCheckout);
 
       // Logowanie do panelu
       document.getElementById('admin-login-form').addEventListener('submit', handleAdminLogin);
@@ -1514,12 +1641,10 @@
       document.getElementById('admin-logout').addEventListener('click', adminLogout);
 
       // Zamykanie modali po kliknięciu w tło
-      document.getElementById('checkout-modal').addEventListener('click', function (e) { if (e.target === this) closeCheckout(); });
       document.getElementById('cart-drawer').addEventListener('click', function (e) { if (e.target === this) closeCart(); });
       document.getElementById('share-modal').addEventListener('click', function (e) { if (e.target === this) closeShareModal(); });
       document.getElementById('track-lookup-modal').addEventListener('click', function (e) { if (e.target === this) closeTrackLookup(); });
       document.getElementById('cancel-modal').addEventListener('click', function (e) { if (e.target === this) closeCancelModal(); });
-      document.getElementById('order-summary').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
     });
 
     window.addEventListener('popstate', route);
@@ -1534,9 +1659,9 @@
     <!-- NAGŁÓWEK -->
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo.png" alt="Logo Maslo3D" class="w-11 h-11 rounded-xl object-cover" />
+        <img src="logo.png" alt="Logo Masło3D" class="w-11 h-11 rounded-xl object-cover" />
         <div class="flex-1">
-          <h1 class="text-lg font-bold text-white leading-tight">Maslo3D</h1>
+          <h1 class="text-lg font-bold text-white leading-tight">Masło3D</h1>
           <p class="text-xs text-slate-400">Wydruki 3D dla społeczności szkolnej</p>
         </div>
         <button id="share-open" title="Udostępnij stronę (kod QR)"
@@ -1571,7 +1696,7 @@
     </main>
 
     <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
-      <p>Maslo3D - projekt szkolny</p>
+      <p>Masło3D - projekt szkolny</p>
     </footer>
 
     <!-- PRZYCISK KOSZYKA -->
@@ -1585,65 +1710,12 @@
         class="hidden min-w-6 h-6 px-1.5 rounded-full bg-slate-900 text-white text-xs font-bold items-center justify-center"></span>
     </button>
 
-    <!-- KOSZYK (drawer) -->
+    <!-- KOSZYK (drawer — 3 kroki) -->
     <div id="cart-drawer" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
       <div class="ml-auto w-full max-w-md h-full bg-panel border-l border-white/10 flex flex-col">
-        <div class="flex items-center justify-between p-4 border-b border-white/10">
-          <h3 class="text-lg font-bold text-white">Twój koszyk</h3>
-          <button id="cart-close" class="text-slate-500 hover:text-white text-xl leading-none">&times;</button>
-        </div>
-        <div id="cart-items" class="flex-1 overflow-y-auto px-4"></div>
-        <div class="border-t border-white/10 p-4 space-y-2">
-          <div class="flex justify-between text-sm text-slate-400"><span>Sztuk</span><span id="cart-count" class="text-white">0 szt.</span></div>
-          <div class="flex justify-between text-sm text-slate-400"><span>Dostawa</span><span class="text-white">Szkoła</span></div>
-          <div class="flex justify-between text-base font-bold text-white pt-1 border-t border-white/10"><span>Razem</span><span id="cart-total">0,00 zł</span></div>
-          <button id="cart-checkout"
-            class="w-full mt-1 py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Przejdź do zamówienia</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- MODAL: ZAMÓWIENIE (checkout) -->
-    <div id="checkout-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl my-8">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-bold text-white">Podsumowanie zamówienia</h3>
-          <button id="checkout-close" class="text-slate-500 hover:text-white text-xl leading-none">&times;</button>
-        </div>
-
-        <!-- Podsumowanie koszyka -->
-        <div class="bg-base/60 border border-white/10 rounded-xl p-4 mb-4 text-sm space-y-1">
-          <div class="flex justify-between"><span class="text-slate-400">Sztuk</span><span id="checkout-count" class="text-white"></span></div>
-          <div class="flex justify-between font-bold"><span class="text-slate-400">Razem</span><span id="checkout-total" class="text-accent"></span></div>
-        </div>
-
-        <form id="checkout-form" class="space-y-4">
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">Imię *</label>
-            <input id="checkout-name" type="text" required placeholder="np. Kuba"
-              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">Klasa *</label>
-            <input id="checkout-class" type="text" required placeholder="np. 3B"
-              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
-          </div>
-          <div>
-            <label class="block text-sm text-slate-400 mb-1">Miejsce dostawy</label>
-            <select id="checkout-delivery"
-              class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none">
-              <option value="Szkoła" selected>Szkoła</option>
-            </select>
-          </div>
-          <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">
-            <p><strong>Podawanie imienia i klasy jest potrzebne TYLKO do procesu dostawy.</strong></p>
-            <p class="mt-1">Płatność: brak płatności online - rozliczenie przy odbiorze w szkole.</p>
-          </div>
-          <p id="checkout-mode-note" class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2"></p>
-          <div id="checkout-message"></div>
-          <button type="submit"
-            class="w-full py-3 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all shadow-lg shadow-accent/20">Zamów</button>
-        </form>
+        <div id="cart-header" class="flex items-center justify-between p-4 border-b border-white/10"></div>
+        <div id="cart-body" class="flex-1 overflow-y-auto px-4"></div>
+        <div id="cart-footer" class="border-t border-white/10 p-4 space-y-2"></div>
       </div>
     </div>
 
@@ -1688,9 +1760,6 @@
     </div>
 
     <!-- KARTA PODSUMOWANIA PO ZAMÓWIENIU -->
-    <div id="order-summary" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
-      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl my-8"></div>
-    </div>
   </div>
 
   <!-- ================= WIDOK 2: ŚLEDZENIE ================= -->
@@ -1698,14 +1767,14 @@
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo.png" alt="Logo Maslo3D" class="w-10 h-10 rounded-lg object-cover" />
-          <h1 class="font-bold text-white">Maslo3D</h1>
+          <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">Masło3D</h1>
         </div>
       </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
         <div id="tracking-box" class="w-full"></div>
       </main>
-      <footer class="text-center text-sm text-slate-500 py-6">Maslo3D</footer>
+      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
     </div>
   </div>
 
@@ -1714,8 +1783,8 @@
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo.png" alt="Logo Maslo3D" class="w-10 h-10 rounded-lg object-cover" />
-          <h1 class="font-bold text-white">Maslo3D</h1>
+          <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">Masło3D</h1>
         </div>
       </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
@@ -1735,7 +1804,12 @@
             <form id="admin-login-form" class="space-y-4">
               <div>
                 <label class="block text-sm text-slate-400 mb-1">Hasło</label>
-                <input id="admin-pass" type="password" required autofocus placeholder="Hasło do panelu"
+                <input id="admin-pass" type="password" required autofocus
+                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+              </div>
+              <div id="admin-pass-confirm-group" class="hidden">
+                <label class="block text-sm text-slate-400 mb-1">Potwierdź hasło</label>
+                <input id="admin-pass-confirm" type="password"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
               <p id="admin-login-error" class="text-sm text-red-300"></p>
@@ -1746,7 +1820,7 @@
           </div>
         </div>
       </main>
-      <footer class="text-center text-sm text-slate-500 py-6">Maslo3D</footer>
+      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
     </div>
   </div>
 
@@ -1754,7 +1828,7 @@
   <div id="view-admin" data-view class="hidden">
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo.png" alt="Logo Maslo3D" class="w-10 h-10 rounded-lg object-cover" />
+        <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
         <div class="flex-1">
           <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
           <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
@@ -1837,6 +1911,11 @@
               <input id="set-banner" type="text"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
+            <div class="sm:col-span-2 lg:col-span-1">
+              <label class="block text-sm text-slate-400 mb-1">Szacowany czas dostawy</label>
+              <input id="set-delivery-estimate" type="text"
+                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+            </div>
             <div class="lg:col-span-3 flex items-end">
               <button type="submit"
                 class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz ustawienia</button>
@@ -1875,14 +1954,26 @@
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Czas druku (sekundy)</label>
-                <input id="product-print-time" type="number" min="0" placeholder="np. 3600"
-                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                <label class="block text-sm text-slate-400 mb-1">Czas druku</label>
+                <div class="flex gap-2">
+                  <input id="product-print-time-h" type="number" min="0" max="999"
+                    class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                  <span class="text-slate-500 self-center">h</span>
+                  <input id="product-print-time-m" type="number" min="0" max="59"
+                    class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                  <span class="text-slate-500 self-center">m</span>
+                </div>
               </div>
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Czas ręczny (sekundy)</label>
-                <input id="product-manual-time" type="number" min="0" placeholder="np. 300"
-                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                <label class="block text-sm text-slate-400 mb-1">Czas ręczny</label>
+                <div class="flex gap-2">
+                  <input id="product-manual-time-h" type="number" min="0" max="999"
+                    class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                  <span class="text-slate-500 self-center">h</span>
+                  <input id="product-manual-time-m" type="number" min="0" max="59"
+                    class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                  <span class="text-slate-500 self-center">m</span>
+                </div>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
