@@ -430,6 +430,7 @@
       const params = new URLSearchParams(window.location.search);
       const code = params.get('o');
       const orderId = params.get('orderId');
+      const productId = params.get('p');
       const isAdmin = params.get('admin') === 'true';
 
       // Wyczyść tracking listener przy zmianie widoku
@@ -439,8 +440,10 @@
 
       if (code || orderId) {
         document.getElementById('view-tracking').classList.remove('hidden');
-        // Priorytet: nowy 3-cyfrowy kod (?o=); fallback stary UUID (?orderId=)
         initTracking(code ? 'o:' + code : 'id:' + orderId);
+      } else if (productId) {
+        document.getElementById('view-product').classList.remove('hidden');
+        renderProductDetail(productId);
       } else if (isAdmin) {
         if (isAdminAuthed()) {
           document.getElementById('view-admin').classList.remove('hidden');
@@ -570,9 +573,9 @@
           'bg-panel border border-white/5 rounded-2xl overflow-hidden shadow-xl ' +
           'hover:border-accent/40 hover:shadow-accent/10 transition-all flex flex-col';
         card.innerHTML =
-          productImageHtml(p) +
+          '<div data-goto-product="' + id + '" class="cursor-pointer">' + productImageHtml(p) + '</div>' +
           '<div class="p-5 flex flex-col flex-1">' +
-          '  <div class="flex items-start justify-between gap-2">' +
+          '  <div data-goto-product="' + id + '" class="flex items-start justify-between gap-2 cursor-pointer">' +
           '    <h3 class="text-lg font-semibold text-white">' + esc(p.name) + '</h3>' +
           '    <span class="text-accent font-bold whitespace-nowrap text-lg">' + fmtPrice(price) + '</span>' +
           '  </div>' +
@@ -594,6 +597,75 @@
 
         grid.appendChild(card);
       });
+    }
+
+    /* --- Podstrona produktu --- */
+    function renderProductDetail(productId) {
+      var box = document.getElementById('product-detail-box');
+      var p = products[productId];
+      if (!p) {
+        box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent hover:text-sky-300 text-sm mt-4 inline-block">&larr; Wróć do sklepu</a></div>';
+        return;
+      }
+
+      var img = p.imageUrl || p.image;
+      var hasImg = img && img.length > 20;
+      var price = productPrice(p);
+      var isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq;
+      var isBundle = !!(p.bundle && p.bundle.items);
+      var outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
+
+      var whistleLabel = '';
+      if (isWhistle) {
+        var freqs = Array.isArray(p.whistleFreq) ? p.whistleFreq : [p.whistleFreq];
+        whistleLabel = freqs.map(function (f) { return f >= 1000 ? (f / 1000).toFixed(1) + 'kHz' : f + 'Hz'; }).join(' + ');
+      }
+
+      var html =
+        '<div class="grid grid-cols-1 md:grid-cols-2 gap-8">' +
+        '  <div class="aspect-square w-full rounded-2xl overflow-hidden bg-black/40 shadow-xl">' +
+        (hasImg
+          ? '  <img src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" />'
+          : '  <div class="w-full h-full flex items-center justify-center text-slate-600"><svg class="w-24 h-24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg></div>') +
+        '  </div>' +
+        '  <div class="flex flex-col">' +
+        '    <h1 class="text-2xl font-bold text-white">' + esc(p.name) + '</h1>' +
+        '    <p class="text-accent font-bold text-2xl mt-2">' + fmtPrice(price) + '</p>' +
+        (p.desc ? '    <p class="text-slate-400 mt-4 leading-relaxed">' + esc(p.desc) + '</p>' : '') +
+        '    <div class="mt-4 flex flex-wrap gap-2">' +
+        '      <span class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-sm text-slate-300">' + fmtTime(p.printTimeSec) + ' druku</span>' +
+        (p.weight ? '      <span class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-sm text-slate-400">' + fmtGrams(p.weight) + '</span>' : '') +
+        '      <span class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-sm text-slate-400">' + fmtPerGram(settings.pricePerGram) + '</span>' +
+        (isBundle ? '      <span class="text-amber-400 bg-amber-400/10 border border-amber-400/30 rounded-full px-3 py-1 text-sm">Zestaw (' + p.bundle.items.length + ' el.)</span>' : '') +
+        (outOfStock
+          ? '      <span class="text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1 text-sm font-bold">Brak w magazynie</span>'
+          : (p.stock != null ? '      <span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 text-sm">Stan: ' + p.stock + '</span>' : '')) +
+        '    </div>' +
+        (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">Posłuchaj gwizdka (' + whistleLabel + ')</button>' : '') +
+        (p.modelFile && p.modelFile.url ? '<a id="pd-download" href="' + esc(p.modelFile.url) + '" download="' + esc(p.modelFile.name || 'model.stl') + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</a>' : '') +
+        (p.authorLink ? '<a href="' + esc(p.authorLink) + '" target="_blank" rel="noopener" class="mt-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-400 text-sm border border-violet-500/30 hover:bg-violet-500/30 transition w-fit inline-block text-center">Model autora &nearr;</a>' : '') +
+        '    <div class="mt-6 pt-6 border-t border-white/10">' +
+        (outOfStock
+          ? '      <p class="text-red-400 text-sm">Produkt chwilowo niedostępny.</p>'
+          : '      <button id="pd-add-cart" class="w-full py-3 rounded-xl font-bold text-base bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20 transition-all">Dodaj do koszyka</button>') +
+        '    </div>' +
+        '  </div>' +
+        '</div>';
+
+      box.innerHTML = html;
+
+      if (!outOfStock) {
+        document.getElementById('pd-add-cart').addEventListener('click', function () {
+          cart[productId] = (cart[productId] || 0) + 1;
+          saveCart();
+          flash('Dodano do koszyka');
+        });
+      }
+      if (isWhistle) {
+        document.getElementById('pd-whistle').addEventListener('click', function () {
+          playWhistle(p.whistleFreq);
+        });
+      }
     }
 
     // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
@@ -1299,52 +1371,142 @@
     }
 
     // Kompresja i konwersja zdjęcia do Base64 (WebP/JPEG) - max 600px, jakość 0.6
-    function handleImageSelect(e) {
-      const file = e.target.files[0];
-      const preview = document.getElementById('product-image-preview');
-      const info = document.getElementById('product-image-info');
-      if (!file) return;
+    /* --- Crop overlay --- */
+    var cropState = { img: null, imgW: 0, imgH: 0, cropSize: 0, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
 
+    function handleImageSelect(e) {
+      var file = e.target.files[0];
+      if (!file) return;
       if (!file.type.startsWith('image/')) {
         alert('Wybierz plik graficzny (JPG, PNG, WebP...).');
         e.target.value = '';
         return;
       }
-
-      const reader = new FileReader();
+      var reader = new FileReader();
       reader.onload = function (ev) {
-        const img = new Image();
+        var img = new Image();
         img.onload = function () {
-          const MAX = 600;
-          let width = img.width, height = img.height;
-          if (width > MAX) {
-            height = Math.round(height * MAX / width);
-            width = MAX;
-          }
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-
-          let dataUrl;
-          try {
-            dataUrl = canvas.toDataURL('image/webp', 0.6);
-            if (!dataUrl || dataUrl.length < 50) throw new Error('no-webp');
-          } catch (err) {
-            dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-          }
-
-          document.getElementById('product-image-data').value = dataUrl;
-          preview.src = dataUrl;
-          preview.classList.remove('hidden');
-          const kb = (dataUrl.length * 0.75) / 1024;
-          info.textContent = 'Skompresowano: ' + width + 'x' + height + 'px, ~' + kb.toFixed(1) + ' KB';
+          cropState.img = img;
+          cropState.imgW = img.naturalWidth;
+          cropState.imgH = img.naturalHeight;
+          openCropOverlay(img);
         };
         img.onerror = function () { alert('Nie można odczytać obrazu.'); };
         img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
+    }
+
+    function openCropOverlay(img) {
+      var modal = document.getElementById('crop-modal');
+      var container = document.getElementById('crop-container');
+      var imgEl = document.getElementById('crop-image');
+      var area = document.getElementById('crop-area');
+
+      imgEl.src = img.src;
+
+      modal.classList.remove('hidden');
+
+      requestAnimationFrame(function () {
+        var displayW = imgEl.clientWidth;
+        var displayH = imgEl.clientHeight;
+
+        var cropPx = Math.min(displayW, displayH) * 0.8;
+        cropState.cropSize = cropPx;
+        cropState.offsetX = (displayW - cropPx) / 2;
+        cropState.offsetY = (displayH - cropPx) / 2;
+
+        area.style.width = cropPx + 'px';
+        area.style.height = cropPx + 'px';
+        area.style.left = cropState.offsetX + 'px';
+        area.style.top = cropState.offsetY + 'px';
+
+        setupCropDrag(area, container, displayW, displayH);
+      });
+
+      document.getElementById('crop-confirm').onclick = confirmCrop;
+      document.getElementById('crop-cancel').onclick = cancelCrop;
+    }
+
+    function setupCropDrag(area, container, maxW, maxH) {
+      var cropPx = cropState.cropSize;
+
+      function onStart(ex, ey) {
+        cropState.dragging = true;
+        cropState.startX = ex - parseFloat(area.style.left);
+        cropState.startY = ey - parseFloat(area.style.top);
+      }
+
+      function onMove(ex, ey) {
+        if (!cropState.dragging) return;
+        var nx = ex - cropState.startX;
+        var ny = ey - cropState.startY;
+        nx = Math.max(0, Math.min(nx, maxW - cropPx));
+        ny = Math.max(0, Math.min(ny, maxH - cropPx));
+        area.style.left = nx + 'px';
+        area.style.top = ny + 'px';
+      }
+
+      function onEnd() { cropState.dragging = false; }
+
+      area.addEventListener('mousedown', function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); });
+      document.addEventListener('mousemove', function (e) { onMove(e.clientX, e.clientY); });
+      document.addEventListener('mouseup', onEnd);
+
+      area.addEventListener('touchstart', function (e) { e.preventDefault(); var t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: false });
+      document.addEventListener('touchmove', function (e) { if (cropState.dragging) { var t = e.touches[0]; onMove(t.clientX, t.clientY); } }, { passive: true });
+      document.addEventListener('touchend', onEnd);
+    }
+
+    function confirmCrop() {
+      var img = cropState.img;
+      var area = document.getElementById('crop-area');
+      var imgEl = document.getElementById('crop-image');
+
+      var displayW = imgEl.clientWidth;
+      var displayH = imgEl.clientHeight;
+      var scaleX = img.naturalWidth / displayW;
+      var scaleY = img.naturalHeight / displayH;
+
+      var areaLeft = parseFloat(area.style.left);
+      var areaTop = parseFloat(area.style.top);
+      var areaSize = cropState.cropSize;
+
+      var sx = Math.round(areaLeft * scaleX);
+      var sy = Math.round(areaTop * scaleY);
+      var sSize = Math.round(areaSize * Math.max(scaleX, scaleY));
+      sSize = Math.min(sSize, img.naturalWidth - sx, img.naturalHeight - sy);
+
+      var MAX = 600;
+      var canvas = document.createElement('canvas');
+      canvas.width = MAX;
+      canvas.height = MAX;
+      var ctx = canvas.getContext('2d');
+      ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, MAX, MAX);
+
+      var dataUrl;
+      try {
+        dataUrl = canvas.toDataURL('image/webp', 0.6);
+        if (!dataUrl || dataUrl.length < 50) throw new Error('no-webp');
+      } catch (err) {
+        dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+      }
+
+      document.getElementById('product-image-data').value = dataUrl;
+      var preview = document.getElementById('product-image-preview');
+      var info = document.getElementById('product-image-info');
+      preview.src = dataUrl;
+      preview.classList.remove('hidden');
+      var kb = (dataUrl.length * 0.75) / 1024;
+      info.textContent = 'Skadrowano: 1:1, ' + MAX + 'x' + MAX + 'px, ~' + kb.toFixed(1) + ' KB';
+
+      cancelCrop();
+    }
+
+    function cancelCrop() {
+      document.getElementById('crop-modal').classList.add('hidden');
+      cropState.img = null;
+      cropState.dragging = false;
     }
 
     function handleModelSelect(e) {
@@ -1473,6 +1635,7 @@
       document.getElementById('product-stock').value = p.stock || 0;
       document.getElementById('product-whistle-freq').value = Array.isArray(p.whistleFreq) ? p.whistleFreq.join(', ') : (p.whistleFreq || '');
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
+      document.getElementById('product-author-link').value = p.authorLink || '';
       document.getElementById('product-bundle').checked = !!(p.bundle && p.bundle.items);
       bundleItems = (p.bundle && p.bundle.items) ? JSON.parse(JSON.stringify(p.bundle.items)) : [];
       renderBundleList();
@@ -1527,6 +1690,7 @@
         if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
         bundle = { items: bundleItems.slice() };
       }
+      const authorLink = document.getElementById('product-author-link').value.trim() || '';
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
 
@@ -1552,7 +1716,7 @@
         var imageUrl = results[0];
         var modelResult = results[1];
 
-        var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle };
+        var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
         if (imageUrl) docData.imageUrl = imageUrl;
         if (editingProductId) {
           if (!imageUrl) delete docData.imageUrl;
@@ -1819,6 +1983,11 @@
           flash('Dodano do koszyka');
           return;
         }
+        btn = e.target.closest('[data-goto-product]');
+        if (btn) {
+          window.location.search = '?p=' + encodeURIComponent(btn.dataset.gotoProduct);
+          return;
+        }
         btn = e.target.closest('[data-whistle]');
         if (btn) {
           var wp = products[btn.dataset.whistle];
@@ -2078,6 +2247,22 @@
     </div>
   </div>
 
+  <!-- ================= WIDOK: PODSTRONA PRODUKTU ================= -->
+  <div id="view-product" data-view class="hidden">
+    <div class="min-h-screen flex flex-col">
+      <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
+          <a href="?" class="text-accent hover:text-sky-300 text-sm font-semibold">&larr; Sklep</a>
+          <img src="logo-64.png" alt="Logo Masło3D" class="w-8 h-8 rounded-lg object-cover ml-auto" />
+        </div>
+      </header>
+      <main class="flex-1 px-4 py-8">
+        <div id="product-detail-box" class="max-w-5xl mx-auto"></div>
+      </main>
+      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
+    </div>
+  </div>
+
   <!-- ================= WIDOK: LOGOWANIE DO PANELU ================= -->
   <div id="view-admin-login" data-view class="hidden">
     <div class="min-h-screen flex flex-col">
@@ -2317,8 +2502,13 @@
               <input id="product-model-data" type="hidden" value="" />
               <p id="product-model-info" class="text-xs text-slate-500 mt-1"></p>
             </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">Link do modelu autora (opcjonalnie)</label>
+              <input id="product-author-link" type="url" placeholder="https://www.thingiverse.com/thing:12345"
+                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+            </div>
             <div class="flex gap-3 pt-1">
-              <button type="submit"
+              <button type="submit" id="admin-form-submit"
                 class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz produkt</button>
               <button type="button" id="admin-form-reset" onclick="resetProductForm()"
                 class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Wyczyść</button>
@@ -2373,6 +2563,25 @@
         <div id="cancel-reasons" class="space-y-2"></div>
         <button onclick="closeCancelModal()"
           class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
+      </div>
+    </div>
+
+    <!-- CROP OVERLAY -->
+    <div id="crop-modal" class="hidden fixed inset-0 z-[55] bg-black/90 flex flex-col items-center justify-center">
+      <p class="text-white text-sm mb-3">Przeciągnij kwadrat, aby wybrać fragment. Proporcje 1:1.</p>
+      <div id="crop-container" class="relative overflow-hidden rounded-xl border border-white/10" style="max-width:90vw;max-height:70vh;">
+        <img id="crop-image" class="block max-w-full max-h-[70vh] pointer-events-none select-none" draggable="false" />
+        <div id="crop-area" class="absolute border-2 border-white rounded-sm cursor-move" style="touch-action:none;">
+          <div class="absolute inset-0 border border-white/30 pointer-events-none"></div>
+          <div class="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-accent pointer-events-none -translate-x-0.5 -translate-y-0.5"></div>
+          <div class="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-accent pointer-events-none translate-x-0.5 -translate-y-0.5"></div>
+          <div class="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-accent pointer-events-none -translate-x-0.5 translate-y-0.5"></div>
+          <div class="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-accent pointer-events-none translate-x-0.5 translate-y-0.5"></div>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-4">
+        <button id="crop-confirm" class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Kadruj i zapisz</button>
+        <button id="crop-cancel" class="px-6 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Anuluj</button>
       </div>
     </div>
   </div>
