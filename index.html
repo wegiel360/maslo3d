@@ -114,6 +114,7 @@ db.ref('orders').on('value',snap=>{
   if($('#view-admin').classList.contains('hidden')===false)renderAdmin();
 });
 </script>
+<script>
 function renderBanner(){
   const b=$('#banner');
   if(b&&settings.banner){b.textContent=settings.banner;b.classList.remove('hidden')}
