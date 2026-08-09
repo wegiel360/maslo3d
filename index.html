@@ -44,7 +44,7 @@
        Prawdziwa konfiguracja projektu Masło3D (maslo-3d).
        ============================================================ -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <!-- ============================================================
        Q R C O D E  - ładowany lazy (tylko gdy potrzebny),
@@ -101,7 +101,7 @@
     };
     // Inicjalizacja aplikacji Firebase + Realtime Database
     firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    const db = firebase.firestore();
   </script>
 
   <!-- ============================================================
@@ -440,22 +440,24 @@
        ------------------------------------------------------------------ */
     function startListeners() {
       // Ustawienia (cena za gram, tryb, baner)
-      db.ref('settings').on('value', function (snap) {
-        settings = snap.val() || settings;
+      db.collection('settings').doc('main').onSnapshot(function (snap) {
+        settings = snap.exists ? snap.data() : settings;
         renderShop();
         if (isViewOpen('view-admin')) { renderAdminSettings(); renderChart(); }
       });
 
       // Produkty
-      db.ref('products').on('value', function (snap) {
-        products = snap.val() || {};
+      db.collection('products').onSnapshot(function (snap) {
+        products = {};
+        snap.docs.forEach(function (doc) { products[doc.id] = doc.data(); });
         renderShop();
         if (isViewOpen('view-admin')) renderAdminProducts();
       });
 
       // Zamówienia
-      db.ref('orders').on('value', function (snap) {
-        orders = snap.val() || {};
+      db.collection('orders').onSnapshot(function (snap) {
+        orders = {};
+        snap.docs.forEach(function (doc) { orders[doc.id] = doc.data(); });
         const params = new URLSearchParams(window.location.search);
         const code = params.get('o');
         const orderId = params.get('orderId');
@@ -831,23 +833,22 @@
         deleteReason: ''
       };
 
-      var updates = {};
-      updates['/orders/' + orderId] = order;
+      msg.innerHTML = '<p class="text-slate-400 text-sm">Wysyłanie...</p>';
+      var submitBtn = document.getElementById('cart-submit-order');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var batch = db.batch();
+      batch.set(db.collection('orders').doc(orderId), order);
       if (settings.mode === 'active') {
         items.forEach(function (it) {
           var p = products[it.productId];
           var decrement = Math.min(it.qty, p.stock || 0);
           if (decrement > 0) {
-            updates['/products/' + it.productId + '/stock'] = (p.stock || 0) - decrement;
+            batch.update(db.collection('products').doc(it.productId), { stock: (p.stock || 0) - decrement });
           }
         });
       }
-
-      msg.innerHTML = '<p class="text-slate-400 text-sm">Wysyłanie...</p>';
-      var submitBtn = document.getElementById('cart-submit-order');
-      if (submitBtn) submitBtn.disabled = true;
-
-      db.ref().update(updates)
+      batch.commit()
         .then(function () {
           cart = {};
           saveCart();
@@ -906,6 +907,7 @@
 
     let trackingSubscribedId = null;
     let trackingKey = null;
+    let trackingUnsub = null;
 
     // Rozwiązuje klucz (kod lub UUID) na identyfikator zamówienia; null, gdy jeszcze nieznany
     function resolveTrackingKey(key) {
@@ -924,15 +926,14 @@
       trackingKey = key;
       const orderId = resolveTrackingKey(key);
       if (!orderId) {
-        // Kod jeszcze nie rozpoznany (baza się ładuje) - pokaż ładowanie; spróbujemy ponownie
         renderTracking(null, null, true);
         return;
       }
       if (trackingSubscribedId !== orderId) {
-        if (trackingSubscribedId) db.ref('orders/' + trackingSubscribedId).off('value');
+        if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
         trackingSubscribedId = orderId;
-        db.ref('orders/' + orderId).on('value', function (snap) {
-          renderTracking(snap.val(), orderId);
+        trackingUnsub = db.collection('orders').doc(orderId).onSnapshot(function (snap) {
+          renderTracking(snap.exists ? snap.data() : null, orderId);
         });
       } else {
         renderTracking(orders[orderId] || null, orderId);
@@ -1184,7 +1185,7 @@
     }
 
     function setOrderStatus(id, status) {
-      db.ref('orders/' + id + '/status').set(status)
+      db.collection('orders').doc(id).update({ status: status })
         .then(function () { flash('Status: ' + status); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
@@ -1235,7 +1236,7 @@
           const input = list.querySelector('[data-stock-id="' + id + '"]');
           const val = parseInt(input.value, 10);
           if (isNaN(val) || val < 0) { alert('Podaj poprawny stan (0 lub więcej).'); return; }
-          db.ref('products/' + id + '/stock').set(val)
+          db.collection('products').doc(id).update({ stock: val })
             .then(function () { flash('Stan magazynowy zaktualizowany.'); })
             .catch(function (e) { alert('Błąd: ' + e.message); });
         });
@@ -1245,7 +1246,7 @@
         btn.addEventListener('click', function () {
           const id = btn.dataset.delProduct;
           if (confirm('Na pewno usunąć ten produkt?')) {
-            db.ref('products/' + id).remove()
+            db.collection('products').doc(id).delete()
               .then(function () { flash('Produkt usunięty.'); })
               .catch(function (e) { alert('Błąd: ' + e.message); });
           }
@@ -1362,12 +1363,12 @@
       if (editingProductId) {
         const updates = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle };
         if (image) updates.image = image;
-        db.ref('products/' + editingProductId).update(updates)
+        db.collection('products').doc(editingProductId).update(updates)
           .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
           .catch(function (e) { alert('Błąd: ' + e.message); });
       } else {
-        const id = genUUID();
-        db.ref('products/' + id).set({ name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, image: image, whistleFreq: whistleFreq, tags: tags, bundle: bundle, createdAt: Date.now() })
+        var newId = genUUID();
+        db.collection('products').doc(newId).set({ name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, image: image, whistleFreq: whistleFreq, tags: tags, bundle: bundle, createdAt: Date.now() })
           .then(function () { flash('Produkt dodany.'); resetProductForm(); })
           .catch(function (e) { alert('Błąd: ' + e.message); });
       }
@@ -1395,7 +1396,7 @@
 
       if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawną cenę za gram (0 lub więcej).'); return; }
 
-      db.ref('settings').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, deliveryEstimate: deliveryEstimate, adminPasswordHash: settings.adminPasswordHash || '' })
+      db.collection('settings').doc('main').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, deliveryEstimate: deliveryEstimate, adminPasswordHash: settings.adminPasswordHash || '' })
         .then(function () { flash('Ustawienia zapisane.'); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
@@ -1474,7 +1475,7 @@
 
       if (!isArchived) {
         tr.querySelector('[data-status-id]').addEventListener('change', function () {
-          db.ref('orders/' + id + '/status').set(this.value)
+          db.collection('orders').doc(id).update({ status: this.value })
             .then(function () { flash('Status zaktualizowany.'); })
             .catch(function (e) { alert('Błąd: ' + e.message); });
         });
@@ -1515,7 +1516,7 @@
 
     function confirmCancel(reason) {
       if (!cancelOrderId) return;
-      db.ref('orders/' + cancelOrderId).update({
+      db.collection('orders').doc(cancelOrderId).update({
         isDeleted: true,
         deleteReason: reason,
         status: 'Anulowane'
@@ -1578,7 +1579,7 @@
         btn.disabled = true;
         try {
           const hash = await sha256(pass);
-          await db.ref('settings/adminPasswordHash').set(hash);
+          await db.collection('settings').doc('main').update({ adminPasswordHash: hash });
           settings.adminPasswordHash = hash;
           sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
           flash('Hasło ustawione. Zalogowano.');
