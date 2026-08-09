@@ -7,7 +7,7 @@
   <title>Masło3D - wydruki 3D</title>
   <meta name="description" content="Masło3D - system zamówień wydruków 3D dla społeczności szkolnej. Wycena za gram, kolejka oczekujących i śledzenie zamówienia." />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
-  <link rel="apple-touch-icon" href="logo.png" />
+  <link rel="apple-touch-icon" href="logo-180.png" />
 
   <!-- Preconnect do kluczowych źródeł (szybsze ładowanie SDK i CDN) -->
   <link rel="preconnect" href="https://www.gstatic.com" />
@@ -45,6 +45,7 @@
        ============================================================ -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
   <!-- ============================================================
        Q R C O D E  - ładowany lazy (tylko gdy potrzebny),
@@ -99,9 +100,9 @@
       messagingSenderId: "247381401412",
       appId: "1:247381401412:web:c84e69054097093e258111"
     };
-    // Inicjalizacja aplikacji Firebase + Realtime Database
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
+    const storage = firebase.storage();
   </script>
 
   <!-- ============================================================
@@ -186,6 +187,17 @@
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
+    }
+
+    /* --- Upload do Firebase Storage --- */
+    function uploadDataUrl(dataUrl, path) {
+      return storage.ref().child(path).putString(dataUrl, 'data_url')
+        .then(function (snap) { return snap.ref.getDownloadURL(); });
+    }
+
+    function uploadFile(file, path) {
+      return storage.ref().child(path).put(file)
+        .then(function (snap) { return snap.ref.getDownloadURL(); });
     }
 
     /* --- Krótki wariant ID (8 znaków) --- */
@@ -325,20 +337,24 @@
 
     /* --- Odtwarzanie gwizdka (Web Audio) --- */
     var whistleCtx = null;
-    function playWhistle(freq, duration) {
+    function playWhistle(freqs, duration) {
       try {
         if (!whistleCtx) whistleCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (whistleCtx.state === 'suspended') whistleCtx.resume();
-        var osc = whistleCtx.createOscillator();
-        var gain = whistleCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq || 880;
-        gain.gain.setValueAtTime(0.3, whistleCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, whistleCtx.currentTime + (duration || 0.5));
-        osc.connect(gain);
-        gain.connect(whistleCtx.destination);
-        osc.start();
-        osc.stop(whistleCtx.currentTime + (duration || 0.5));
+        var list = Array.isArray(freqs) ? freqs : (freqs ? [freqs] : [880]);
+        var dur = duration || 0.5;
+        list.forEach(function (f) {
+          var osc = whistleCtx.createOscillator();
+          var gain = whistleCtx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = f;
+          gain.gain.setValueAtTime(0.3 / list.length, whistleCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, whistleCtx.currentTime + dur);
+          osc.connect(gain);
+          gain.connect(whistleCtx.destination);
+          osc.start();
+          osc.stop(whistleCtx.currentTime + dur);
+        });
       } catch (e) {}
     }
 
@@ -416,6 +432,9 @@
       const orderId = params.get('orderId');
       const isAdmin = params.get('admin') === 'true';
 
+      // Wyczyść tracking listener przy zmianie widoku
+      if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
+
       document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
 
       if (code || orderId) {
@@ -438,34 +457,64 @@
     /* ------------------------------------------------------------------
        REALTIME LISTENERS
        ------------------------------------------------------------------ */
-    function startListeners() {
-      // Ustawienia (cena za gram, tryb, baner)
-      db.collection('settings').doc('main').onSnapshot(function (snap) {
-        settings = snap.exists ? snap.data() : settings;
-        renderShop();
-        if (isViewOpen('view-admin')) { renderAdminSettings(); renderChart(); }
-      });
+    var unsubSettings = null, unsubProducts = null, unsubOrders = null;
+    var renderPending = false;
 
-      // Produkty
-      db.collection('products').onSnapshot(function (snap) {
-        products = {};
-        snap.docs.forEach(function (doc) { products[doc.id] = doc.data(); });
+    function scheduleRender() {
+      if (renderPending) return;
+      renderPending = true;
+      requestAnimationFrame(function () {
+        renderPending = false;
         renderShop();
-        if (isViewOpen('view-admin')) renderAdminProducts();
-      });
-
-      // Zamówienia
-      db.collection('orders').onSnapshot(function (snap) {
-        orders = {};
-        snap.docs.forEach(function (doc) { orders[doc.id] = doc.data(); });
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('o');
-        const orderId = params.get('orderId');
-        // Po każdej aktualizacji spróbuj rozwiązać widok śledzenia
+        if (isViewOpen('view-admin')) { renderAdminProducts(); renderAdminOrders(); renderPrintQueue(); renderStats(); renderChart(); }
+        var params = new URLSearchParams(window.location.search);
+        var code = params.get('o');
+        var orderId = params.get('orderId');
         if (code) initTracking('o:' + code);
         else if (orderId) initTracking('id:' + orderId);
-        if (isViewOpen('view-admin')) { renderAdminOrders(); renderPrintQueue(); renderStats(); renderChart(); }
       });
+    }
+
+    function startListeners() {
+      // Ustawienia (cena za gram, tryb, baner)
+      unsubSettings = db.collection('settings').doc('main').onSnapshot(function (snap) {
+        settings = snap.exists ? snap.data() : settings;
+        scheduleRender();
+      });
+
+      // Produkty — incrementalne aktualizacje
+      unsubProducts = db.collection('products').onSnapshot(function (snap) {
+        snap.docChanges().forEach(function (change) {
+          if (change.type === 'added' || change.type === 'modified') {
+            products[change.doc.id] = change.doc.data();
+          } else if (change.type === 'removed') {
+            delete products[change.doc.id];
+          }
+        });
+        scheduleRender();
+      });
+
+      // Zamówienia — incrementalne + filtr isDeleted + limit
+      unsubOrders = db.collection('orders')
+        .where('isDeleted', '==', false)
+        .orderBy('createdAt', 'desc')
+        .limit(200)
+        .onSnapshot(function (snap) {
+          snap.docChanges().forEach(function (change) {
+            if (change.type === 'added' || change.type === 'modified') {
+              orders[change.doc.id] = change.doc.data();
+            } else if (change.type === 'removed') {
+              delete orders[change.doc.id];
+            }
+          });
+          scheduleRender();
+        });
+    }
+
+    function stopListeners() {
+      if (unsubSettings) { unsubSettings(); unsubSettings = null; }
+      if (unsubProducts) { unsubProducts(); unsubProducts = null; }
+      if (unsubOrders) { unsubOrders(); unsubOrders = null; }
     }
 
     function isViewOpen(id) {
@@ -514,7 +563,7 @@
         const outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
         const price = productPrice(p);
         const isBundle = !!(p.bundle && p.bundle.items);
-        const isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq;
+        const isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq && (Array.isArray(p.whistleFreq) ? p.whistleFreq.length > 0 : true);
 
         const card = document.createElement('div');
         card.className =
@@ -537,45 +586,13 @@
             ? '<span class="text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1 font-bold uppercase">Brak w magazynie</span>'
             : (p.stock != null ? '<span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1">Stan: ' + p.stock + '</span>' : '')) +
           '  </div>' +
-          (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">Posłuchaj gwizdka</button>' : '') +
+          (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">Posłuchaj gwizdka (' + (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function(f){return f>=1000?(f/1000).toFixed(1)+'kHz':f+'Hz';}).join(' + ') : (p.whistleFreq >= 1000 ? (p.whistleFreq/1000).toFixed(1)+'kHz' : p.whistleFreq+'Hz')) + ')</button>' : '') +
           (p.modelFile && p.modelFile.data ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
           '  <button data-add-cart="' + id + '" ' + (outOfStock ? 'disabled' : '') + ' class="mt-4 w-full py-2.5 rounded-xl font-semibold text-base transition-all ' +
           (outOfStock ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20') + '">Dodaj do koszyka</button>' +
           '</div>';
 
         grid.appendChild(card);
-      });
-
-      grid.querySelectorAll('[data-add-cart]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          if (btn.disabled) return;
-          const id = btn.dataset.addCart;
-          cart[id] = (cart[id] || 0) + 1;
-          saveCart();
-          flash('Dodano do koszyka');
-        });
-      });
-
-      grid.querySelectorAll('[data-whistle]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          const id = btn.dataset.whistle;
-          const p = products[id];
-          if (p && p.whistleFreq) playWhistle(p.whistleFreq);
-        });
-      });
-
-      grid.querySelectorAll('[data-download-model]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var pid = btn.dataset.downloadModel;
-          var p = products[pid];
-          if (!p || !p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
-          var a = document.createElement('a');
-          a.href = p.modelFile.data;
-          a.download = p.modelFile.name || 'model.stl';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        });
       });
     }
 
@@ -656,20 +673,6 @@
           '</div></div>';
       });
       container.innerHTML = html;
-
-      container.querySelectorAll('[data-cart-inc]').forEach(function (b) {
-        b.addEventListener('click', function () { cart[b.dataset.cartInc]++; saveCart(); renderCartStep(); });
-      });
-      container.querySelectorAll('[data-cart-dec]').forEach(function (b) {
-        var id = b.dataset.cartDec;
-        cart[id] = (cart[id] || 1) - 1;
-        if (cart[id] <= 0) delete cart[id];
-        saveCart(); renderCartStep();
-      });
-      container.querySelectorAll('[data-cart-del]').forEach(function (b) {
-        delete cart[b.dataset.cartDel];
-        saveCart(); renderCartStep();
-      });
     }
 
     function renderCartFooter(container) {
@@ -1467,7 +1470,7 @@
       document.getElementById('product-manual-time-h').value = Math.floor((p.manualTimeSec || 0) / 3600) || '';
       document.getElementById('product-manual-time-m').value = Math.floor(((p.manualTimeSec || 0) % 3600) / 60) || '';
       document.getElementById('product-stock').value = p.stock || 0;
-      document.getElementById('product-whistle-freq').value = p.whistleFreq || '';
+      document.getElementById('product-whistle-freq').value = Array.isArray(p.whistleFreq) ? p.whistleFreq.join(', ') : (p.whistleFreq || '');
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
       document.getElementById('product-bundle').checked = !!(p.bundle && p.bundle.items);
       bundleItems = (p.bundle && p.bundle.items) ? JSON.parse(JSON.stringify(p.bundle.items)) : [];
@@ -1507,7 +1510,8 @@
       const manualTimeSec = (parseInt(document.getElementById('product-manual-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-manual-time-m').value, 10) || 0) * 60;
       const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
       const image = document.getElementById('product-image-data').value;
-      const whistleFreq = parseFloat(document.getElementById('product-whistle-freq').value) || 0;
+      const whistleRaw = document.getElementById('product-whistle-freq').value.trim();
+      const whistleFreq = whistleRaw ? whistleRaw.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v) && v > 0; }) : [];
       const tagsStr = document.getElementById('product-tags').value.trim();
       const tags = tagsStr ? tagsStr.split(',').map(function (t) { return t.trim(); }).filter(Boolean) : [];
       const modelData = document.getElementById('product-model-data').value;
@@ -1643,30 +1647,6 @@
           : '<button data-cancel="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Anuluj i usuń</button>') +
         '</td>';
 
-      if (!isArchived) {
-        tr.querySelector('[data-status-id]').addEventListener('change', function () {
-          db.collection('orders').doc(id).update({ status: this.value })
-            .then(function () { flash('Status zaktualizowany.'); })
-            .catch(function (e) { alert('Błąd: ' + e.message); });
-        });
-        var estimateInput = tr.querySelector('[data-estimate-id]');
-        var estimateTimeout = null;
-        estimateInput.addEventListener('input', function () {
-          var val = this.value.trim();
-          clearTimeout(estimateTimeout);
-          estimateTimeout = setTimeout(function () {
-            db.collection('orders').doc(id).update({ deliveryEstimate: val })
-              .then(function () { flash('Szacowany czas dostawy zapisany.'); })
-              .catch(function (e) { alert('Błąd: ' + e.message); });
-          }, 800);
-        });
-        tr.querySelector('[data-cancel]').addEventListener('click', function () { openCancelModal(id); });
-      }
-
-      tr.querySelector('[data-copy-link]').addEventListener('click', function () {
-        copyText(trackingLink(o.orderCode)).then(function () { flash('Link śledzenia skopiowany.'); });
-      });
-
       return tr;
     }
 
@@ -1800,9 +1780,116 @@
     /* ------------------------------------------------------------------
        START
        ------------------------------------------------------------------ */
+    /* --- Event delegation (jednorazowa instalacja) --- */
+    function setupEventDelegation() {
+      // Sklep: koszyk, gwizdek, pobieranie pliku
+      var grid = document.getElementById('shop-grid');
+      if (grid) grid.addEventListener('click', function (e) {
+        var btn;
+        btn = e.target.closest('[data-add-cart]');
+        if (btn && !btn.disabled) {
+          var id = btn.dataset.addCart;
+          cart[id] = (cart[id] || 0) + 1;
+          saveCart();
+          flash('Dodano do koszyka');
+          return;
+        }
+        btn = e.target.closest('[data-whistle]');
+        if (btn) {
+          var wp = products[btn.dataset.whistle];
+          if (wp && wp.whistleFreq) playWhistle(wp.whistleFreq);
+          return;
+        }
+        btn = e.target.closest('[data-download-model]');
+        if (btn) {
+          var dp = products[btn.dataset.downloadModel];
+          if (dp && dp.modelFile && dp.modelFile.data) {
+            var a = document.createElement('a');
+            a.href = dp.modelFile.data;
+            a.download = dp.modelFile.name || 'model.stl';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          }
+          return;
+        }
+      });
+
+      // Koszyk: inkrementacja, dekrementacja, usuwanie
+      var cartBody = document.getElementById('cart-body');
+      if (cartBody) cartBody.addEventListener('click', function (e) {
+        var btn;
+        btn = e.target.closest('[data-cart-inc]');
+        if (btn) {
+          cart[btn.dataset.cartInc] = (cart[btn.dataset.cartInc] || 0) + 1;
+          saveCart();
+          renderCartStep();
+          return;
+        }
+        btn = e.target.closest('[data-cart-dec]');
+        if (btn) {
+          var did = btn.dataset.cartDec;
+          cart[did] = (cart[did] || 1) - 1;
+          if (cart[did] <= 0) delete cart[did];
+          saveCart();
+          renderCartStep();
+          return;
+        }
+        btn = e.target.closest('[data-cart-del]');
+        if (btn) {
+          delete cart[btn.dataset.cartDel];
+          saveCart();
+          renderCartStep();
+          return;
+        }
+      });
+
+      // Tabela zamówień admina: status, szacunek, anulowanie, link
+      var ordersTbody = document.getElementById('orders-tbody');
+      if (ordersTbody) {
+        ordersTbody.addEventListener('change', function (e) {
+          var sel;
+          sel = e.target.closest('[data-status-id]');
+          if (sel) {
+            var sid = sel.dataset.statusId;
+            db.collection('orders').doc(sid).update({ status: sel.value })
+              .then(function () { flash('Status zaktualizowany.'); })
+              .catch(function (er) { alert('Błąd: ' + er.message); });
+            return;
+          }
+        });
+        var estimateTimers = {};
+        ordersTbody.addEventListener('input', function (e) {
+          var inp = e.target.closest('[data-estimate-id]');
+          if (inp) {
+            var eid = inp.dataset.estimateId;
+            clearTimeout(estimateTimers[eid]);
+            estimateTimers[eid] = setTimeout(function () {
+              db.collection('orders').doc(eid).update({ deliveryEstimate: inp.value.trim() })
+                .then(function () { flash('Szacowany czas dostawy zapisany.'); })
+                .catch(function (er) { alert('Błąd: ' + er.message); });
+            }, 800);
+            return;
+          }
+        });
+        ordersTbody.addEventListener('click', function (e) {
+          var btn;
+          btn = e.target.closest('[data-cancel]');
+          if (btn) { openCancelModal(btn.dataset.cancel); return; }
+          btn = e.target.closest('[data-copy-link]');
+          if (btn) {
+            var clo = orders[btn.dataset.copyLink];
+            if (clo) copyText(trackingLink(clo.orderCode)).then(function () { flash('Link śledzenia skopiowany.'); });
+            return;
+          }
+        });
+      }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
       loadCart();
       startListeners();
+      setupEventDelegation();
       route();
 
       // Sklep
@@ -1831,6 +1918,11 @@
     });
 
     window.addEventListener('popstate', route);
+    window.addEventListener('beforeunload', function () {
+      stopListeners();
+      if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
+      if (whistleCtx && whistleCtx.state !== 'closed') { whistleCtx.close(); }
+    });
   </script>
 
   <!-- ============================================================
@@ -1842,7 +1934,7 @@
     <!-- NAGŁÓWEK -->
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo.png" alt="Logo Masło3D" class="w-11 h-11 rounded-xl object-cover" />
+        <img src="logo-64.png" alt="Logo Masło3D" class="w-11 h-11 rounded-xl object-cover" />
         <div class="flex-1">
           <h1 class="text-lg font-bold text-white leading-tight">Masło3D</h1>
           <p class="text-xs text-slate-400">Wydruki 3D</p>
@@ -1950,7 +2042,7 @@
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+          <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
           <h1 class="font-bold text-white">Masło3D</h1>
         </div>
       </header>
@@ -1966,7 +2058,7 @@
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+          <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
           <h1 class="font-bold text-white">Masło3D</h1>
         </div>
       </header>
@@ -2011,7 +2103,7 @@
   <div id="view-admin" data-view class="hidden">
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+        <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
         <div class="flex-1">
           <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
           <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
@@ -2157,7 +2249,7 @@
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm text-slate-400 mb-1">Częst. gwizdka (Hz)</label>
-                <input id="product-whistle-freq" type="number" min="0" placeholder="np. 880"
+                <input id="product-whistle-freq" type="text" placeholder="np. 880 lub 2200, 2400"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
               <div>
