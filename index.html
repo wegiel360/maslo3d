@@ -1579,7 +1579,7 @@
         btn.disabled = true;
         try {
           const hash = await sha256(pass);
-          await db.collection('settings').doc('main').update({ adminPasswordHash: hash });
+          await db.collection('settings').doc('main').set({ adminPasswordHash: hash }, { merge: true });
           settings.adminPasswordHash = hash;
           sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
           flash('Hasło ustawione. Zalogowano.');
