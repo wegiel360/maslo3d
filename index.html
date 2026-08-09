@@ -270,7 +270,7 @@
       try { cart = JSON.parse(localStorage.getItem(CART_KEY)) || {}; } catch (e) { cart = {}; }
     }
     function saveCart() {
-      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+      try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* quota exceeded */ }
       updateCartBadge();
     }
 
@@ -473,8 +473,10 @@
         var params = new URLSearchParams(window.location.search);
         var code = params.get('o');
         var orderId = params.get('orderId');
+        var productId = params.get('p');
         if (code) initTracking('o:' + code);
         else if (orderId) initTracking('id:' + orderId);
+        else if (productId && isViewOpen('view-product')) renderProductDetail(productId);
       });
     }
 
@@ -483,7 +485,7 @@
       unsubSettings = db.collection('settings').doc('main').onSnapshot(function (snap) {
         settings = snap.exists ? snap.data() : settings;
         scheduleRender();
-      });
+      }, function (err) { console.error('Settings listener error:', err); });
 
       // Produkty — incrementalne aktualizacje
       unsubProducts = db.collection('products').onSnapshot(function (snap) {
@@ -495,13 +497,12 @@
           }
         });
         scheduleRender();
-      });
+      }, function (err) { console.error('Products listener error:', err); });
 
-      // Zamówienia — incrementalne + filtr isDeleted + limit
+      // Zamówienia — incrementalne + filtr isDeleted (bez orderBy — sortowanie w JS)
       unsubOrders = db.collection('orders')
         .where('isDeleted', '==', false)
-        .orderBy('createdAt', 'desc')
-        .limit(200)
+        .limit(500)
         .onSnapshot(function (snap) {
           snap.docChanges().forEach(function (change) {
             if (change.type === 'added' || change.type === 'modified') {
@@ -511,7 +512,7 @@
             }
           });
           scheduleRender();
-        });
+        }, function (err) { console.error('Orders listener error:', err); });
     }
 
     function stopListeners() {
@@ -1373,6 +1374,7 @@
     // Kompresja i konwersja zdjęcia do Base64 (WebP/JPEG) - max 600px, jakość 0.6
     /* --- Crop overlay --- */
     var cropState = { img: null, imgW: 0, imgH: 0, cropSize: 0, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
+    var cropListeners = [];
 
     function handleImageSelect(e) {
       var file = e.target.files[0];
@@ -1449,13 +1451,20 @@
 
       function onEnd() { cropState.dragging = false; }
 
-      area.addEventListener('mousedown', function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); });
-      document.addEventListener('mousemove', function (e) { onMove(e.clientX, e.clientY); });
-      document.addEventListener('mouseup', onEnd);
+      clearCropListeners();
+      cropListeners.push({ el: area, ev: 'mousedown', fn: function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); } });
+      cropListeners.push({ el: document, ev: 'mousemove', fn: function (e) { onMove(e.clientX, e.clientY); } });
+      cropListeners.push({ el: document, ev: 'mouseup', fn: onEnd });
+      cropListeners.push({ el: area, ev: 'touchstart', fn: function (e) { e.preventDefault(); var t = e.touches[0]; onStart(t.clientX, t.clientY); }, opts: { passive: false } });
+      cropListeners.push({ el: document, ev: 'touchmove', fn: function (e) { if (cropState.dragging) { var t = e.touches[0]; onMove(t.clientX, t.clientY); } }, opts: { passive: true } });
+      cropListeners.push({ el: document, ev: 'touchend', fn: onEnd });
 
-      area.addEventListener('touchstart', function (e) { e.preventDefault(); var t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: false });
-      document.addEventListener('touchmove', function (e) { if (cropState.dragging) { var t = e.touches[0]; onMove(t.clientX, t.clientY); } }, { passive: true });
-      document.addEventListener('touchend', onEnd);
+      cropListeners.forEach(function (l) { l.el.addEventListener(l.ev, l.fn, l.opts); });
+    }
+
+    function clearCropListeners() {
+      cropListeners.forEach(function (l) { l.el.removeEventListener(l.ev, l.fn); });
+      cropListeners = [];
     }
 
     function confirmCrop() {
@@ -1504,6 +1513,7 @@
     }
 
     function cancelCrop() {
+      clearCropListeners();
       document.getElementById('crop-modal').classList.add('hidden');
       cropState.img = null;
       cropState.dragging = false;
@@ -1720,6 +1730,7 @@
         if (imageUrl) docData.imageUrl = imageUrl;
         if (editingProductId) {
           if (!imageUrl) delete docData.imageUrl;
+          if (imageUrl) docData.image = firebase.firestore.FieldValue.delete();
           return db.collection('products').doc(editingProductId).update(docData)
             .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); });
         } else {
@@ -2082,6 +2093,7 @@
 
     document.addEventListener('DOMContentLoaded', function () {
       loadCart();
+      updateCartBadge();
       startListeners();
       setupEventDelegation();
       route();
@@ -2109,6 +2121,10 @@
       document.getElementById('share-modal').addEventListener('click', function (e) { if (e.target === this) closeShareModal(); });
       document.getElementById('track-lookup-modal').addEventListener('click', function (e) { if (e.target === this) closeTrackLookup(); });
       document.getElementById('cancel-modal').addEventListener('click', function (e) { if (e.target === this) closeCancelModal(); });
+
+      // Koszyk z podstrony produktu
+      var pdCartBtn = document.getElementById('pd-open-cart');
+      if (pdCartBtn) pdCartBtn.addEventListener('click', openCart);
     });
 
     window.addEventListener('popstate', route);
@@ -2253,7 +2269,8 @@
       <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <a href="?" class="text-accent hover:text-sky-300 text-sm font-semibold">&larr; Sklep</a>
-          <img src="logo-64.png" alt="Logo Masło3D" class="w-8 h-8 rounded-lg object-cover ml-auto" />
+          <img src="logo-64.png" alt="Logo Masło3D" class="w-8 h-8 rounded-lg object-cover" />
+          <button id="pd-open-cart" class="ml-auto text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Koszyk</button>
         </div>
       </header>
       <main class="flex-1 px-4 py-8">
