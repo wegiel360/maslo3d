@@ -587,7 +587,7 @@
             : (p.stock != null ? '<span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1">Stan: ' + p.stock + '</span>' : '')) +
           '  </div>' +
           (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">Posłuchaj gwizdka (' + (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function(f){return f>=1000?(f/1000).toFixed(1)+'kHz':f+'Hz';}).join(' + ') : (p.whistleFreq >= 1000 ? (p.whistleFreq/1000).toFixed(1)+'kHz' : p.whistleFreq+'Hz')) + ')</button>' : '') +
-          (p.modelFile && p.modelFile.data ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
+          (p.modelFile && p.modelFile.url ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
           '  <button data-add-cart="' + id + '" ' + (outOfStock ? 'disabled' : '') + ' class="mt-4 w-full py-2.5 rounded-xl font-semibold text-base transition-all ' +
           (outOfStock ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20') + '">Dodaj do koszyka</button>' +
           '</div>';
@@ -598,9 +598,10 @@
 
     // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
     function productImageHtml(p) {
-      if (p.image && p.image.length > 20) {
+      var img = p.imageUrl || p.image;
+      if (img && img.length > 20) {
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
-          '  <img src="' + esc(p.image) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
+          '  <img src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
           '</div>';
       }
       return '<div class="aspect-square w-full flex items-center justify-center bg-gradient-to-br from-panel to-base text-slate-600">' +
@@ -654,8 +655,8 @@
         var qty = cart[id];
         html += '<div class="flex items-center gap-3 py-3 border-b border-white/5">' +
           '<div class="w-10 h-10 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
-          (p.image && p.image.length > 20
-            ? '<img src="' + esc(p.image) + '" class="w-full h-full object-cover" alt="" />'
+          ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
+            ? '<img src="' + esc(p.imageUrl || p.image) + '" class="w-full h-full object-cover" alt="" />'
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
@@ -1226,8 +1227,8 @@
         row.className = 'flex flex-col sm:flex-row sm:items-center gap-3 bg-base/50 border border-white/10 rounded-xl p-3';
         row.innerHTML =
           '<div class="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-black/40">' +
-          (p.image && p.image.length > 20
-            ? '<img src="' + esc(p.image) + '" class="w-full h-full object-cover" alt="" />'
+          ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
+            ? '<img src="' + esc(p.imageUrl || p.image) + '" class="w-full h-full object-cover" alt="" />'
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
@@ -1241,7 +1242,7 @@
           '  <button data-save-stock="' + id + '" class="bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg">Zapisz</button>' +
           '</div>' +
           '<div class="flex items-center gap-2">' +
-          (p.modelFile && p.modelFile.data
+          (p.modelFile && p.modelFile.url
             ? '  <button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1" title="' + esc(p.modelFile.name) + '">Plik 3D</button>'
             : '') +
           '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-sm px-2 py-1">Edytuj</button>' +
@@ -1284,9 +1285,9 @@
         btn.addEventListener('click', function () {
           var pid = btn.dataset.downloadModel;
           var p = products[pid];
-          if (!p || !p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
+          if (!p || !p.modelFile || !p.modelFile.url) { alert('Brak pliku 3D.'); return; }
           var a = document.createElement('a');
-          a.href = p.modelFile.data;
+          a.href = p.modelFile.url;
           a.download = p.modelFile.name || 'model.stl';
           document.body.appendChild(a);
           a.click();
@@ -1478,8 +1479,9 @@
       document.getElementById('bundle-section').classList.toggle('hidden', !(p.bundle && p.bundle.items));
       const preview = document.getElementById('product-image-preview');
       const info = document.getElementById('product-image-info');
-      if (p.image && p.image.length > 20) {
-        preview.src = p.image;
+      var currentImg = p.imageUrl || p.image;
+      if (currentImg && currentImg.length > 20) {
+        preview.src = currentImg;
         preview.classList.remove('hidden');
         info.textContent = 'Aktualne zdjęcie (możesz wczytać nowe).';
       } else {
@@ -1488,10 +1490,13 @@
       }
       var modelInfo = document.getElementById('product-model-info');
       var modelDataInput = document.getElementById('product-model-data');
-      if (p.modelFile && p.modelFile.data) {
+      if (p.modelFile && p.modelFile.url) {
+        modelDataInput.value = '';
+        modelInfo.textContent = p.modelFile.name + ' — obecny plik w Storage (możesz wczytać nowy).';
+      } else if (p.modelFile && p.modelFile.data) {
         modelDataInput.value = p.modelFile.data;
         var modelKb = (p.modelFile.data.length * 0.75) / 1024;
-        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB) — obecny plik (możesz wczytać nowy).';
+        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB) — obecny plik (legacy).';
       } else {
         modelDataInput.value = '';
         modelInfo.textContent = '';
@@ -1509,18 +1514,14 @@
       const printTimeSec = (parseInt(document.getElementById('product-print-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-print-time-m').value, 10) || 0) * 60;
       const manualTimeSec = (parseInt(document.getElementById('product-manual-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-manual-time-m').value, 10) || 0) * 60;
       const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
-      const image = document.getElementById('product-image-data').value;
+      const imageDataUrl = document.getElementById('product-image-data').value;
       const whistleRaw = document.getElementById('product-whistle-freq').value.trim();
       const whistleFreq = whistleRaw ? whistleRaw.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v) && v > 0; }) : [];
       const tagsStr = document.getElementById('product-tags').value.trim();
       const tags = tagsStr ? tagsStr.split(',').map(function (t) { return t.trim(); }).filter(Boolean) : [];
-      const modelData = document.getElementById('product-model-data').value;
-      let modelFile = null;
-      if (modelData) {
-        var modelInput = document.getElementById('product-model');
-        var fileName = modelInput.files[0] ? modelInput.files[0].name : 'model.stl';
-        modelFile = { name: fileName, data: modelData };
-      }
+      const modelDataUrl = document.getElementById('product-model-data').value;
+      const modelInput = document.getElementById('product-model');
+      const modelFileName = modelInput.files[0] ? modelInput.files[0].name : '';
       let bundle = null;
       if (document.getElementById('product-bundle').checked) {
         if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
@@ -1529,19 +1530,43 @@
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
 
-      if (editingProductId) {
-        const updates = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle };
-        if (image) updates.image = image;
-        if (modelFile) updates.modelFile = modelFile;
-        db.collection('products').doc(editingProductId).update(updates)
-          .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
-          .catch(function (e) { alert('Błąd: ' + e.message); });
-      } else {
-        var newId = genUUID();
-        db.collection('products').doc(newId).set({ name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, image: image, modelFile: modelFile, whistleFreq: whistleFreq, tags: tags, bundle: bundle, createdAt: Date.now() })
-          .then(function () { flash('Produkt dodany.'); resetProductForm(); })
-          .catch(function (e) { alert('Błąd: ' + e.message); });
+      var productId = editingProductId || genUUID();
+      var submitBtn = document.getElementById('admin-form-submit');
+      if (submitBtn) submitBtn.disabled = true;
+
+      var imagePromise = Promise.resolve(null);
+      if (imageDataUrl) {
+        imagePromise = uploadDataUrl(imageDataUrl, 'products/' + productId + '/image')
+          .catch(function (err) { console.warn('Upload zdjęcia nie powiódł się:', err); return null; });
       }
+
+      var modelPromise = Promise.resolve(null);
+      if (modelDataUrl) {
+        var ext = modelFileName.split('.').pop() || 'stl';
+        modelPromise = uploadDataUrl(modelDataUrl, 'products/' + productId + '/model.' + ext)
+          .then(function (url) { return { name: modelFileName, url: url }; })
+          .catch(function (err) { console.warn('Upload modelu nie powiódł się:', err); return null; });
+      }
+
+      Promise.all([imagePromise, modelPromise]).then(function (results) {
+        var imageUrl = results[0];
+        var modelResult = results[1];
+
+        var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle };
+        if (imageUrl) docData.imageUrl = imageUrl;
+        if (editingProductId) {
+          if (!imageUrl) delete docData.imageUrl;
+          return db.collection('products').doc(editingProductId).update(docData)
+            .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); });
+        } else {
+          if (imageUrl) docData.imageUrl = imageUrl;
+          if (modelResult) docData.modelFile = modelResult;
+          docData.createdAt = Date.now();
+          return db.collection('products').doc(productId).set(docData)
+            .then(function () { flash('Produkt dodany.'); resetProductForm(); });
+        }
+      }).catch(function (err) { alert('Błąd: ' + err.message); })
+        .finally(function () { if (submitBtn) submitBtn.disabled = false; });
     }
 
     function resetProductForm() {
@@ -1803,9 +1828,9 @@
         btn = e.target.closest('[data-download-model]');
         if (btn) {
           var dp = products[btn.dataset.downloadModel];
-          if (dp && dp.modelFile && dp.modelFile.data) {
+          if (dp && dp.modelFile && dp.modelFile.url) {
             var a = document.createElement('a');
-            a.href = dp.modelFile.data;
+            a.href = dp.modelFile.url;
             a.download = dp.modelFile.name || 'model.stl';
             document.body.appendChild(a);
             a.click();
