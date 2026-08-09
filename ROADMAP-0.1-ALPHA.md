@@ -53,7 +53,7 @@ i gotowy na urządzenia mobilne i komputery. Dostępny jako **GitHub Pages** pod
 - Firebase RTDB `maslo-3d-default-rtdb` (europe-west1), publiczne reguły.
 - `firebase.json` + `database.rules.json` w repo.
 - Optymalizacje: skompresowane obrazy (`bg.jpg`, `logo.png`), lazy-load QR, `preconnect`.
-- Hasło panelu: `ZAQ!2wsxz` → hash `8738d8af…` w `settings/adminPasswordHash` (hasło **nigdy** w kodzie ani README).
+- Hasło panelu admina przechowywane tylko jako hash SHA-256 w bazie (hasło **nigdy** w kodzie ani README).
 
 ## 4. Technologia i uruchomienie lokalnie
 
