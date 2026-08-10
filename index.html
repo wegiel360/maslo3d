@@ -102,7 +102,8 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    const storage = firebase.storage();
+    var storage = null;
+    try { storage = firebase.storage(); } catch (e) { console.warn('Firebase Storage niedostępne:', e.message); }
   </script>
 
   <!-- ============================================================
@@ -191,11 +192,13 @@
 
     /* --- Upload do Firebase Storage --- */
     function uploadDataUrl(dataUrl, path) {
+      if (!storage) return Promise.resolve(null);
       return storage.ref().child(path).putString(dataUrl, 'data_url')
         .then(function (snap) { return snap.ref.getDownloadURL(); });
     }
 
     function uploadFile(file, path) {
+      if (!storage) return Promise.resolve(null);
       return storage.ref().child(path).put(file)
         .then(function (snap) { return snap.ref.getDownloadURL(); });
     }
@@ -1727,14 +1730,18 @@
         var modelResult = results[1];
 
         var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
-        if (imageUrl) docData.imageUrl = imageUrl;
+        if (imageUrl) {
+          docData.imageUrl = imageUrl;
+        } else if (imageDataUrl && !imageUrl) {
+          docData.image = imageDataUrl;
+        }
         if (editingProductId) {
-          if (!imageUrl) delete docData.imageUrl;
-          if (imageUrl) docData.image = firebase.firestore.FieldValue.delete();
+          if (imageUrl) {
+            docData.image = firebase.firestore.FieldValue.delete();
+          }
           return db.collection('products').doc(editingProductId).update(docData)
             .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); });
         } else {
-          if (imageUrl) docData.imageUrl = imageUrl;
           if (modelResult) docData.modelFile = modelResult;
           docData.createdAt = Date.now();
           return db.collection('products').doc(productId).set(docData)
@@ -2521,7 +2528,7 @@
             </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Link do modelu autora (opcjonalnie)</label>
-              <input id="product-author-link" type="url" placeholder="https://www.thingiverse.com/thing:12345"
+              <input id="product-author-link" type="text" placeholder="https://www.thingiverse.com/thing:12345"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
             <div class="flex gap-3 pt-1">
