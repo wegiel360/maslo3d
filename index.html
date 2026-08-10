@@ -45,7 +45,6 @@
        ============================================================ -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 
   <!-- ============================================================
        Q R C O D E  - ładowany lazy (tylko gdy potrzebny),
@@ -102,8 +101,6 @@
     };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
-    var storage = null;
-    try { storage = firebase.storage(); } catch (e) { console.warn('Firebase Storage niedostępne:', e.message); }
   </script>
 
   <!-- ============================================================
@@ -188,19 +185,6 @@
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
-    }
-
-    /* --- Upload do Firebase Storage --- */
-    function uploadDataUrl(dataUrl, path) {
-      if (!storage) return Promise.resolve(null);
-      return storage.ref().child(path).putString(dataUrl, 'data_url')
-        .then(function (snap) { return snap.ref.getDownloadURL(); });
-    }
-
-    function uploadFile(file, path) {
-      if (!storage) return Promise.resolve(null);
-      return storage.ref().child(path).put(file)
-        .then(function (snap) { return snap.ref.getDownloadURL(); });
     }
 
     /* --- Krótki wariant ID (8 znaków) --- */
@@ -594,7 +578,7 @@
             : (p.stock != null ? '<span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1">Stan: ' + p.stock + '</span>' : '')) +
           '  </div>' +
           (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">Posłuchaj gwizdka (' + (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function(f){return f>=1000?(f/1000).toFixed(1)+'kHz':f+'Hz';}).join(' + ') : (p.whistleFreq >= 1000 ? (p.whistleFreq/1000).toFixed(1)+'kHz' : p.whistleFreq+'Hz')) + ')</button>' : '') +
-          (p.modelFile && p.modelFile.url ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
+          (p.modelFile && p.modelFile.data ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
           '  <button data-add-cart="' + id + '" ' + (outOfStock ? 'disabled' : '') + ' class="mt-4 w-full py-2.5 rounded-xl font-semibold text-base transition-all ' +
           (outOfStock ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20') + '">Dodaj do koszyka</button>' +
           '</div>';
@@ -646,7 +630,7 @@
           : (p.stock != null ? '      <span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 text-sm">Stan: ' + p.stock + '</span>' : '')) +
         '    </div>' +
         (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">Posłuchaj gwizdka (' + whistleLabel + ')</button>' : '') +
-        (p.modelFile && p.modelFile.url ? '<a id="pd-download" href="' + esc(p.modelFile.url) + '" download="' + esc(p.modelFile.name || 'model.stl') + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</a>' : '') +
+        (p.modelFile && p.modelFile.data ? '<a id="pd-download" href="' + esc(p.modelFile.data) + '" download="' + esc(p.modelFile.name || 'model.stl') + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</a>' : '') +
         (p.authorLink ? '<a href="' + esc(p.authorLink) + '" target="_blank" rel="noopener" class="mt-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-400 text-sm border border-violet-500/30 hover:bg-violet-500/30 transition w-fit inline-block text-center">Model autora &nearr;</a>' : '') +
         '    <div class="mt-6 pt-6 border-t border-white/10">' +
         (outOfStock
@@ -1318,7 +1302,7 @@
           '  <button data-save-stock="' + id + '" class="bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg">Zapisz</button>' +
           '</div>' +
           '<div class="flex items-center gap-2">' +
-          (p.modelFile && p.modelFile.url
+          (p.modelFile && p.modelFile.data
             ? '  <button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1" title="' + esc(p.modelFile.name) + '">Plik 3D</button>'
             : '') +
           '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-sm px-2 py-1">Edytuj</button>' +
@@ -1361,9 +1345,9 @@
         btn.addEventListener('click', function () {
           var pid = btn.dataset.downloadModel;
           var p = products[pid];
-          if (!p || !p.modelFile || !p.modelFile.url) { alert('Brak pliku 3D.'); return; }
+          if (!p || !p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
           var a = document.createElement('a');
-          a.href = p.modelFile.url;
+          a.href = p.modelFile.data;
           a.download = p.modelFile.name || 'model.stl';
           document.body.appendChild(a);
           a.click();
@@ -1666,13 +1650,10 @@
       }
       var modelInfo = document.getElementById('product-model-info');
       var modelDataInput = document.getElementById('product-model-data');
-      if (p.modelFile && p.modelFile.url) {
-        modelDataInput.value = '';
-        modelInfo.textContent = p.modelFile.name + ' — obecny plik w Storage (możesz wczytać nowy).';
-      } else if (p.modelFile && p.modelFile.data) {
+      if (p.modelFile && p.modelFile.data) {
         modelDataInput.value = p.modelFile.data;
         var modelKb = (p.modelFile.data.length * 0.75) / 1024;
-        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB) — obecny plik (legacy).';
+        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB) — obecny plik (możesz wczytać nowy).';
       } else {
         modelDataInput.value = '';
         modelInfo.textContent = '';
@@ -1707,48 +1688,28 @@
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
 
-      var productId = editingProductId || genUUID();
-      var submitBtn = document.getElementById('admin-form-submit');
-      if (submitBtn) submitBtn.disabled = true;
+      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
 
-      var imagePromise = Promise.resolve(null);
-      if (imageDataUrl) {
-        imagePromise = uploadDataUrl(imageDataUrl, 'products/' + productId + '/image')
-          .catch(function (err) { console.warn('Upload zdjęcia nie powiódł się:', err); return null; });
-      }
-
-      var modelPromise = Promise.resolve(null);
-      if (modelDataUrl) {
-        var ext = modelFileName.split('.').pop() || 'stl';
-        modelPromise = uploadDataUrl(modelDataUrl, 'products/' + productId + '/model.' + ext)
-          .then(function (url) { return { name: modelFileName, url: url }; })
-          .catch(function (err) { console.warn('Upload modelu nie powiódł się:', err); return null; });
-      }
-
-      Promise.all([imagePromise, modelPromise]).then(function (results) {
-        var imageUrl = results[0];
-        var modelResult = results[1];
-
-        var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
-        if (imageUrl) {
-          docData.imageUrl = imageUrl;
-        } else if (imageDataUrl && !imageUrl) {
+      if (editingProductId) {
+        if (imageDataUrl) {
           docData.image = imageDataUrl;
         }
-        if (editingProductId) {
-          if (imageUrl) {
-            docData.image = firebase.firestore.FieldValue.delete();
-          }
-          return db.collection('products').doc(editingProductId).update(docData)
-            .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); });
-        } else {
-          if (modelResult) docData.modelFile = modelResult;
-          docData.createdAt = Date.now();
-          return db.collection('products').doc(productId).set(docData)
-            .then(function () { flash('Produkt dodany.'); resetProductForm(); });
+        if (modelDataUrl) {
+          docData.modelFile = { name: modelFileName, data: modelDataUrl };
         }
-      }).catch(function (err) { alert('Błąd: ' + err.message); })
-        .finally(function () { if (submitBtn) submitBtn.disabled = false; });
+        db.collection('products').doc(editingProductId).update(docData)
+          .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
+          .catch(function (err) { alert('Błąd: ' + err.message); });
+      } else {
+        docData.image = imageDataUrl || '';
+        if (modelDataUrl) {
+          docData.modelFile = { name: modelFileName, data: modelDataUrl };
+        }
+        docData.createdAt = Date.now();
+        db.collection('products').doc(genUUID()).set(docData)
+          .then(function () { flash('Produkt dodany.'); resetProductForm(); })
+          .catch(function (err) { alert('Błąd: ' + err.message); });
+      }
     }
 
     function resetProductForm() {
@@ -2015,9 +1976,9 @@
         btn = e.target.closest('[data-download-model]');
         if (btn) {
           var dp = products[btn.dataset.downloadModel];
-          if (dp && dp.modelFile && dp.modelFile.url) {
+          if (dp && dp.modelFile && dp.modelFile.data) {
             var a = document.createElement('a');
-            a.href = dp.modelFile.url;
+            a.href = dp.modelFile.data;
             a.download = dp.modelFile.name || 'model.stl';
             document.body.appendChild(a);
             a.click();
