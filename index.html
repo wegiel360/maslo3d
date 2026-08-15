@@ -104,6 +104,99 @@
   </script>
 
   <!-- ============================================================
+       B A S E 1 2 2  E N C O D E R / D E C O D E R
+       Alfabet 122 znaków (podany przez użytkownika).
+       Overhead vs binarny ~15% (Base64 miał 33%).
+       Użyty do kompresji zdjęć (AVIF) i plików 3D w Firestore.
+       ============================================================ -->
+  <script>
+    const BASE122_ALPHABET = '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~¡¢£¤¥§¨©ª«¬®¯°±²³µ¶·¸¹º»¼½¾¿ÀÁ';
+    const BASE122_REV_MAP = {};
+    for (let i = 0; i < BASE122_ALPHABET.length; i++) BASE122_REV_MAP[BASE122_ALPHABET[i]] = i;
+    const B122_LEN_CHARS = 4; // prefiks długości (do 122^4 ≈ 21M bajtów)
+
+    // Uint8Array -> Base122 (BigInt, stała szerokość prefiksu zachowuje wiodące zera)
+    function base122_encode(buf) {
+      if (buf.length === 0) return '';
+      let len = BigInt(buf.length);
+      let lenStr = '';
+      for (let i = 0; i < B122_LEN_CHARS; i++) { lenStr = BASE122_ALPHABET[Number(len % 122n)] + lenStr; len = len / 122n; }
+      let n = 0n;
+      for (let i = 0; i < buf.length; i++) n = (n << 8n) | BigInt(buf[i]);
+      let dataStr = '';
+      if (n === 0n) dataStr = BASE122_ALPHABET[0];
+      else { while (n > 0n) { dataStr = BASE122_ALPHABET[Number(n % 122n)] + dataStr; n = n / 122n; } }
+      return lenStr + dataStr;
+    }
+
+    // Base122 -> Uint8Array
+    function base122_decode(str) {
+      if (!str || str.length === 0) return new Uint8Array(0);
+      const lenStr = str.slice(0, B122_LEN_CHARS);
+      const dataStr = str.slice(B122_LEN_CHARS);
+      let len = 0n;
+      for (const c of lenStr) { const ci = BASE122_REV_MAP[c]; if (ci === undefined) continue; len = len * 122n + BigInt(ci); }
+      const lenNum = Number(len);
+      if (lenNum === 0) return new Uint8Array(0);
+      let n = 0n;
+      for (const c of dataStr) { const ci = BASE122_REV_MAP[c]; if (ci === undefined) continue; n = n * 122n + BigInt(c); }
+      const bytes = [];
+      if (n === 0n) bytes.push(0);
+      else { while (n > 0n) { bytes.push(Number(n & 0xFFn)); n = n >> 8n; } }
+      bytes.reverse();
+      while (bytes.length < lenNum) bytes.unshift(0);
+      return new Uint8Array(bytes.slice(0, lenNum));
+    }
+
+    // data: URL (base64) -> Uint8Array (surowe bajty)
+    function dataUrlToBinaryBytes(dataUrl) {
+      const comma = dataUrl.indexOf(',');
+      const b64 = comma === -1 ? dataUrl : dataUrl.slice(comma + 1);
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return bytes;
+    }
+
+    // Wykryj MIME z magic bytes (AVIF/PNG/JPEG/WebP)
+    function detectImageMime(b) {
+      if (b.length > 3 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4E && b[3] === 0x47) return 'image/png';
+      if (b.length > 2 && b[0] === 0xFF && b[1] === 0xD8 && b[2] === 0xFF) return 'image/jpeg';
+      if (b.length > 11 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+        const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+        if (brand === 'avis' || brand === 'mif1') return 'image/avif';
+        if (brand === 'webp') return 'image/webp';
+      }
+      if (b.length > 4 && b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return 'image/webp';
+      return 'image/png';
+    }
+
+    // Base122 -> data: URL (do wyświetlania <img src>)
+    function base122ToImgDataURL(b122) {
+      const bytes = base122_decode(b122);
+      const mime = detectImageMime(bytes);
+      let bin = '';
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return 'data:' + mime + ';base64,' + btoa(bin);
+    }
+
+    // Obsługuje stare data: URL (legacy) oraz nowy Base122
+    function imageSrcFor(val) {
+      if (!val) return '';
+      if (val.startsWith('data:')) return val;
+      try { return base122ToImgDataURL(val); } catch (e) { return ''; }
+    }
+
+    // Base122 -> Uint8Array (do pobierania modeli 3D jako blob)
+    // Obsługuje też legacy data: URL (base64)
+    function base122ToBinary(val) {
+      if (!val) return new Uint8Array(0);
+      if (val.startsWith('data:')) return dataUrlToBinaryBytes(val);
+      return base122_decode(val);
+    }
+  </script>
+
+  <!-- ============================================================
        L O G I K A  A P L I K A C J I
        ============================================================ -->
   <script>
@@ -596,7 +689,7 @@
         return;
       }
 
-      var img = p.imageUrl || p.image;
+      var img = imageSrcFor(p.imageUrl || p.image);
       var hasImg = img && img.length > 20;
       var price = productPrice(p);
       var isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq;
@@ -630,7 +723,7 @@
           : (p.stock != null ? '      <span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 text-sm">Stan: ' + p.stock + '</span>' : '')) +
         '    </div>' +
         (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">Posłuchaj gwizdka (' + whistleLabel + ')</button>' : '') +
-        (p.modelFile && p.modelFile.data ? '<a id="pd-download" href="' + esc(p.modelFile.data) + '" download="' + esc(p.modelFile.name || 'model.stl') + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</a>' : '') +
+        (p.modelFile && p.modelFile.data ? '<button id="pd-download" data-download-model="' + productId + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
         (p.authorLink ? '<a href="' + esc(p.authorLink) + '" target="_blank" rel="noopener" class="mt-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-400 text-sm border border-violet-500/30 hover:bg-violet-500/30 transition w-fit inline-block text-center">Model autora &nearr;</a>' : '') +
         '    <div class="mt-6 pt-6 border-t border-white/10">' +
         (outOfStock
@@ -654,11 +747,26 @@
           playWhistle(p.whistleFreq);
         });
       }
+      var pdDl = document.getElementById('pd-download');
+      if (pdDl) {
+        pdDl.addEventListener('click', function () {
+          if (!p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
+          var binary = base122ToBinary(p.modelFile.data);
+          var blob = new Blob([binary], { type: 'application/octet-stream' });
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = p.modelFile.name || 'model.stl';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        });
+      }
     }
 
     // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
     function productImageHtml(p) {
-      var img = p.imageUrl || p.image;
+      var img = imageSrcFor(p.imageUrl || p.image);
       if (img && img.length > 20) {
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
           '  <img src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
@@ -716,7 +824,7 @@
         html += '<div class="flex items-center gap-3 py-3 border-b border-white/5">' +
           '<div class="w-10 h-10 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
           ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
-            ? '<img src="' + esc(p.imageUrl || p.image) + '" class="w-full h-full object-cover" alt="" />'
+            ? '<img src="' + esc(imageSrcFor(p.imageUrl || p.image)) + '" class="w-full h-full object-cover" alt="" />'
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
@@ -1288,7 +1396,7 @@
         row.innerHTML =
           '<div class="w-14 h-14 shrink-0 rounded-lg overflow-hidden bg-black/40">' +
           ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
-            ? '<img src="' + esc(p.imageUrl || p.image) + '" class="w-full h-full object-cover" alt="" />'
+            ? '<img src="' + esc(imageSrcFor(p.imageUrl || p.image)) + '" class="w-full h-full object-cover" alt="" />'
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
@@ -1346,12 +1454,16 @@
           var pid = btn.dataset.downloadModel;
           var p = products[pid];
           if (!p || !p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
+          // Base122 -> surowe bajty -> blob -> pobierz
+          var binary = base122ToBinary(p.modelFile.data);
+          var blob = new Blob([binary], { type: 'application/octet-stream' });
           var a = document.createElement('a');
-          a.href = p.modelFile.data;
+          a.href = URL.createObjectURL(blob);
           a.download = p.modelFile.name || 'model.stl';
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
         });
       });
 
@@ -1473,28 +1585,53 @@
       var sSize = Math.round(areaSize * Math.max(scaleX, scaleY));
       sSize = Math.min(sSize, img.naturalWidth - sx, img.naturalHeight - sy);
 
-      var MAX = 600;
+      var MAX = 400;
       var canvas = document.createElement('canvas');
       canvas.width = MAX;
       canvas.height = MAX;
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, MAX, MAX);
 
+      // Główny: AVIF 400px, jakość 0.7. Fallback: PNG 128 kolorów, 200px, 0.6
       var dataUrl;
+      var mimeUsed = 'image/avif';
+      var usedFallback = false;
       try {
-        dataUrl = canvas.toDataURL('image/webp', 0.6);
-        if (!dataUrl || dataUrl.length < 50) throw new Error('no-webp');
+        dataUrl = canvas.toDataURL('image/avif', 0.7);
+        if (!dataUrl || !dataUrl.startsWith('data:image/avif')) throw new Error('no-avif');
       } catch (err) {
-        dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        usedFallback = true;
+        mimeUsed = 'image/png';
+        var fbCanvas = document.createElement('canvas');
+        fbCanvas.width = 200;
+        fbCanvas.height = 200;
+        var fbCtx = fbCanvas.getContext('2d');
+        fbCtx.drawImage(canvas, 0, 0, 200, 200);
+        // Redukcja do ~128 kolorów (kwantyzacja)
+        var imgData = fbCtx.getImageData(0, 0, 200, 200);
+        var px = imgData.data;
+        for (var pi = 0; pi < px.length; pi += 4) {
+          px[pi] = Math.round(px[pi] / 2) * 2;
+          px[pi + 1] = Math.round(px[pi + 1] / 2) * 2;
+          px[pi + 2] = Math.round(px[pi + 2] / 2) * 2;
+        }
+        fbCtx.putImageData(imgData, 0, 0);
+        dataUrl = fbCanvas.toDataURL('image/png', 0.6);
       }
 
-      document.getElementById('product-image-data').value = dataUrl;
+      // Surowe bajty AVIF/PNG -> Base122 (zamiast base64)
+      var binary = dataUrlToBinaryBytes(dataUrl);
+      var b122 = base122_encode(binary);
+      document.getElementById('product-image-data').value = b122;
+
+      // Podgląd: dekoduj Base122 -> data: URL
       var preview = document.getElementById('product-image-preview');
       var info = document.getElementById('product-image-info');
-      preview.src = dataUrl;
+      preview.src = base122ToImgDataURL(b122);
       preview.classList.remove('hidden');
-      var kb = (dataUrl.length * 0.75) / 1024;
-      info.textContent = 'Skadrowano: 1:1, ' + MAX + 'x' + MAX + 'px, ~' + kb.toFixed(1) + ' KB';
+      var fmtLabel = usedFallback ? 'PNG(128kol,200px,0.6)' : 'AVIF(400px,0.7)';
+      var kb = (b122.length * 8 / 7) / 1024;
+      info.textContent = 'Skadrowano: ' + fmtLabel + ' + Base122, ~' + kb.toFixed(1) + ' KB';
 
       cancelCrop();
     }
@@ -1530,9 +1667,12 @@
       var reader = new FileReader();
       reader.onload = function (ev) {
         var dataUrl = ev.target.result;
-        document.getElementById('product-model-data').value = dataUrl;
-        var kb = (dataUrl.length * 0.75) / 1024;
-        info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB)';
+        // Surowe bajty modelu (STL/3MF) -> Base122
+        var binary = dataUrlToBinaryBytes(dataUrl);
+        var b122 = base122_encode(binary);
+        document.getElementById('product-model-data').value = b122;
+        var kb = (b122.length * 8 / 7) / 1024;
+        info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB - Base122)';
       };
       reader.onerror = function () { alert('Nie można odczytać pliku.'); info.textContent = ''; };
       reader.readAsDataURL(file);
@@ -1639,7 +1779,7 @@
       document.getElementById('bundle-section').classList.toggle('hidden', !(p.bundle && p.bundle.items));
       const preview = document.getElementById('product-image-preview');
       const info = document.getElementById('product-image-info');
-      var currentImg = p.imageUrl || p.image;
+      var currentImg = imageSrcFor(p.imageUrl || p.image);
       if (currentImg && currentImg.length > 20) {
         preview.src = currentImg;
         preview.classList.remove('hidden');
@@ -1652,8 +1792,8 @@
       var modelDataInput = document.getElementById('product-model-data');
       if (p.modelFile && p.modelFile.data) {
         modelDataInput.value = p.modelFile.data;
-        var modelKb = (p.modelFile.data.length * 0.75) / 1024;
-        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB) — obecny plik (możesz wczytać nowy).';
+        var modelKb = (p.modelFile.data.length * 8 / 7) / 1024;
+        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB - Base122) — obecny plik (możesz wczytać nowy).';
       } else {
         modelDataInput.value = '';
         modelInfo.textContent = '';
@@ -1977,12 +2117,15 @@
         if (btn) {
           var dp = products[btn.dataset.downloadModel];
           if (dp && dp.modelFile && dp.modelFile.data) {
+            var binary = base122ToBinary(dp.modelFile.data);
+            var blob = new Blob([binary], { type: 'application/octet-stream' });
             var a = document.createElement('a');
-            a.href = dp.modelFile.data;
+            a.href = URL.createObjectURL(blob);
             a.download = dp.modelFile.name || 'model.stl';
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
           }
           return;
         }
