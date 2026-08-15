@@ -81,6 +81,16 @@
       -webkit-backdrop-filter: blur(12px);
     }
   </style>
+
+  <!-- Three.js (moduł ES) do generowania miniaturki z modelu 3D -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
 </head>
 
 <body class="bg-base text-slate-200 font-sans min-h-screen">
@@ -1470,179 +1480,6 @@
       populateBundleDropdown();
     }
 
-    // Kompresja i konwersja zdjęcia do Base64 (WebP/JPEG) - max 600px, jakość 0.6
-    /* --- Crop overlay --- */
-    var cropState = { img: null, imgW: 0, imgH: 0, cropSize: 0, offsetX: 0, offsetY: 0, dragging: false, startX: 0, startY: 0 };
-    var cropListeners = [];
-
-    function handleImageSelect(e) {
-      var file = e.target.files[0];
-      if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        alert('Wybierz plik graficzny (JPG, PNG, WebP...).');
-        e.target.value = '';
-        return;
-      }
-      var reader = new FileReader();
-      reader.onload = function (ev) {
-        var img = new Image();
-        img.onload = function () {
-          cropState.img = img;
-          cropState.imgW = img.naturalWidth;
-          cropState.imgH = img.naturalHeight;
-          openCropOverlay(img);
-        };
-        img.onerror = function () { alert('Nie można odczytać obrazu.'); };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
-    }
-
-    function openCropOverlay(img) {
-      var modal = document.getElementById('crop-modal');
-      var container = document.getElementById('crop-container');
-      var imgEl = document.getElementById('crop-image');
-      var area = document.getElementById('crop-area');
-
-      imgEl.src = img.src;
-
-      modal.classList.remove('hidden');
-
-      requestAnimationFrame(function () {
-        var displayW = imgEl.clientWidth;
-        var displayH = imgEl.clientHeight;
-
-        var cropPx = Math.min(displayW, displayH) * 0.8;
-        cropState.cropSize = cropPx;
-        cropState.offsetX = (displayW - cropPx) / 2;
-        cropState.offsetY = (displayH - cropPx) / 2;
-
-        area.style.width = cropPx + 'px';
-        area.style.height = cropPx + 'px';
-        area.style.left = cropState.offsetX + 'px';
-        area.style.top = cropState.offsetY + 'px';
-
-        setupCropDrag(area, container, displayW, displayH);
-      });
-
-      document.getElementById('crop-confirm').onclick = confirmCrop;
-      document.getElementById('crop-cancel').onclick = cancelCrop;
-    }
-
-    function setupCropDrag(area, container, maxW, maxH) {
-      var cropPx = cropState.cropSize;
-
-      function onStart(ex, ey) {
-        cropState.dragging = true;
-        cropState.startX = ex - parseFloat(area.style.left);
-        cropState.startY = ey - parseFloat(area.style.top);
-      }
-
-      function onMove(ex, ey) {
-        if (!cropState.dragging) return;
-        var nx = ex - cropState.startX;
-        var ny = ey - cropState.startY;
-        nx = Math.max(0, Math.min(nx, maxW - cropPx));
-        ny = Math.max(0, Math.min(ny, maxH - cropPx));
-        area.style.left = nx + 'px';
-        area.style.top = ny + 'px';
-      }
-
-      function onEnd() { cropState.dragging = false; }
-
-      clearCropListeners();
-      cropListeners.push({ el: area, ev: 'mousedown', fn: function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); } });
-      cropListeners.push({ el: document, ev: 'mousemove', fn: function (e) { onMove(e.clientX, e.clientY); } });
-      cropListeners.push({ el: document, ev: 'mouseup', fn: onEnd });
-      cropListeners.push({ el: area, ev: 'touchstart', fn: function (e) { e.preventDefault(); var t = e.touches[0]; onStart(t.clientX, t.clientY); }, opts: { passive: false } });
-      cropListeners.push({ el: document, ev: 'touchmove', fn: function (e) { if (cropState.dragging) { var t = e.touches[0]; onMove(t.clientX, t.clientY); } }, opts: { passive: true } });
-      cropListeners.push({ el: document, ev: 'touchend', fn: onEnd });
-
-      cropListeners.forEach(function (l) { l.el.addEventListener(l.ev, l.fn, l.opts); });
-    }
-
-    function clearCropListeners() {
-      cropListeners.forEach(function (l) { l.el.removeEventListener(l.ev, l.fn); });
-      cropListeners = [];
-    }
-
-    function confirmCrop() {
-      var img = cropState.img;
-      var area = document.getElementById('crop-area');
-      var imgEl = document.getElementById('crop-image');
-
-      var displayW = imgEl.clientWidth;
-      var displayH = imgEl.clientHeight;
-      var scaleX = img.naturalWidth / displayW;
-      var scaleY = img.naturalHeight / displayH;
-
-      var areaLeft = parseFloat(area.style.left);
-      var areaTop = parseFloat(area.style.top);
-      var areaSize = cropState.cropSize;
-
-      var sx = Math.round(areaLeft * scaleX);
-      var sy = Math.round(areaTop * scaleY);
-      var sSize = Math.round(areaSize * Math.max(scaleX, scaleY));
-      sSize = Math.min(sSize, img.naturalWidth - sx, img.naturalHeight - sy);
-
-      var MAX = 400;
-      var canvas = document.createElement('canvas');
-      canvas.width = MAX;
-      canvas.height = MAX;
-      var ctx = canvas.getContext('2d');
-      ctx.drawImage(img, sx, sy, sSize, sSize, 0, 0, MAX, MAX);
-
-      // Główny: AVIF 400px, jakość 0.7. Fallback: PNG 128 kolorów, 200px, 0.6
-      var dataUrl;
-      var mimeUsed = 'image/avif';
-      var usedFallback = false;
-      try {
-        dataUrl = canvas.toDataURL('image/avif', 0.7);
-        if (!dataUrl || !dataUrl.startsWith('data:image/avif')) throw new Error('no-avif');
-      } catch (err) {
-        usedFallback = true;
-        mimeUsed = 'image/png';
-        var fbCanvas = document.createElement('canvas');
-        fbCanvas.width = 200;
-        fbCanvas.height = 200;
-        var fbCtx = fbCanvas.getContext('2d');
-        fbCtx.drawImage(canvas, 0, 0, 200, 200);
-        // Redukcja do ~128 kolorów (kwantyzacja)
-        var imgData = fbCtx.getImageData(0, 0, 200, 200);
-        var px = imgData.data;
-        for (var pi = 0; pi < px.length; pi += 4) {
-          px[pi] = Math.round(px[pi] / 2) * 2;
-          px[pi + 1] = Math.round(px[pi + 1] / 2) * 2;
-          px[pi + 2] = Math.round(px[pi + 2] / 2) * 2;
-        }
-        fbCtx.putImageData(imgData, 0, 0);
-        dataUrl = fbCanvas.toDataURL('image/png', 0.6);
-      }
-
-      // Surowe bajty AVIF/PNG -> Base122 (zamiast base64)
-      var binary = dataUrlToBinaryBytes(dataUrl);
-      var b122 = base122_encode(binary);
-      document.getElementById('product-image-data').value = b122;
-
-      // Podgląd: dekoduj Base122 -> data: URL
-      var preview = document.getElementById('product-image-preview');
-      var info = document.getElementById('product-image-info');
-      preview.src = base122ToImgDataURL(b122);
-      preview.classList.remove('hidden');
-      var fmtLabel = usedFallback ? 'PNG(128kol,200px,0.6)' : 'AVIF(400px,0.7)';
-      var kb = (b122.length * 8 / 7) / 1024;
-      info.textContent = 'Skadrowano: ' + fmtLabel + ' + Base122, ~' + kb.toFixed(1) + ' KB';
-
-      cancelCrop();
-    }
-
-    function cancelCrop() {
-      clearCropListeners();
-      document.getElementById('crop-modal').classList.add('hidden');
-      cropState.img = null;
-      cropState.dragging = false;
-    }
-
     function handleModelSelect(e) {
       var file = e.target.files[0];
       var info = document.getElementById('product-model-info');
@@ -1673,6 +1510,13 @@
         document.getElementById('product-model-data').value = b122;
         var kb = (b122.length * 8 / 7) / 1024;
         info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB - Base122)';
+        // Auto-generuj miniaturkę z modelu 3D (stół + tło)
+        if (window.generateModelThumbnail) {
+          window.generateModelThumbnail(binary, ext).catch(function (err) {
+            console.error('Miniaturka nieudana:', err);
+            document.getElementById('product-image-info').textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+          });
+        }
       };
       reader.onerror = function () { alert('Nie można odczytać pliku.'); info.textContent = ''; };
       reader.readAsDataURL(file);
@@ -1783,7 +1627,7 @@
       if (currentImg && currentImg.length > 20) {
         preview.src = currentImg;
         preview.classList.remove('hidden');
-        info.textContent = 'Aktualne zdjęcie (możesz wczytać nowe).';
+        info.textContent = 'Aktualna miniaturka (z modelu 3D).';
       } else {
         preview.classList.add('hidden');
         info.textContent = '';
@@ -1827,6 +1671,8 @@
       const authorLink = document.getElementById('product-author-link').value.trim() || '';
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
+      if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) — jest wymagany (z niego powstaje miniaturka).'); return; }
+      if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
 
       var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
 
@@ -2223,7 +2069,6 @@
       // Admin
       document.getElementById('settings-form').addEventListener('submit', handleSettingsSubmit);
       document.getElementById('admin-product-form').addEventListener('submit', handleProductSubmit);
-      document.getElementById('product-image').addEventListener('change', handleImageSelect);
       document.getElementById('product-model').addEventListener('change', handleModelSelect);
       document.getElementById('admin-logout').addEventListener('click', adminLogout);
 
@@ -2616,15 +2461,13 @@
               </div>
             </div>
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Zdjęcie (opcjonalne)</label>
-              <input id="product-image" type="file" accept="image/*"
-                class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
+              <label class="block text-sm text-slate-400 mb-1">Miniaturka (generuje się automatycznie z modelu 3D)</label>
               <input id="product-image-data" type="hidden" value="" />
-              <img id="product-image-preview" alt="Podgląd zdjęcia" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
+              <img id="product-image-preview" alt="Podgląd miniaturki" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
             </div>
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, opcjonalnie)</label>
+              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
               <input id="product-model" type="file" accept=".stl,.3mf"
                 class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
               <input id="product-model-data" type="hidden" value="" />
@@ -2694,30 +2537,150 @@
       </div>
     </div>
 
-    <!-- CROP OVERLAY -->
-    <div id="crop-modal" class="hidden fixed inset-0 z-[55] bg-black/90 flex flex-col items-center justify-center">
-      <p class="text-white text-sm mb-3">Przeciągnij kwadrat, aby wybrać fragment. Proporcje 1:1.</p>
-      <div id="crop-container" class="relative overflow-hidden rounded-xl border border-white/10" style="max-width:90vw;max-height:70vh;">
-        <img id="crop-image" class="block max-w-full max-h-[70vh] pointer-events-none select-none" draggable="false" />
-        <div id="crop-area" class="absolute border-2 border-white rounded-sm cursor-move" style="touch-action:none;">
-          <div class="absolute inset-0 border border-white/30 pointer-events-none"></div>
-          <div class="absolute top-0 left-0 w-3 h-3 border-t-2 border-l-2 border-accent pointer-events-none -translate-x-0.5 -translate-y-0.5"></div>
-          <div class="absolute top-0 right-0 w-3 h-3 border-t-2 border-r-2 border-accent pointer-events-none translate-x-0.5 -translate-y-0.5"></div>
-          <div class="absolute bottom-0 left-0 w-3 h-3 border-b-2 border-l-2 border-accent pointer-events-none -translate-x-0.5 translate-y-0.5"></div>
-          <div class="absolute bottom-0 right-0 w-3 h-3 border-b-2 border-r-2 border-accent pointer-events-none translate-x-0.5 translate-y-0.5"></div>
-        </div>
-      </div>
-      <div class="flex gap-3 mt-4">
-        <button id="crop-confirm" class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Kadruj i zapisz</button>
-        <button id="crop-cancel" class="px-6 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Anuluj</button>
-      </div>
-    </div>
   </div>
 
   <!-- TOAST -->
   <div id="toast"
     class="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-800 border border-white/10 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-2xl opacity-0 pointer-events-none transition-opacity duration-300">
   </div>
+
+  <!-- ============================================================
+       Generowanie miniaturki z modelu 3D (STL/3MF) przez Three.js.
+       Tło: bg.jpg + stół dinner_table-v2.glb (CC-BY-4.0, Sketchfab).
+       Model wczytany przez użytkownika jest stawiany na stole i
+       renderowany do 400px AVIF/PNG -> Base122 (#product-image-data).
+       ============================================================ -->
+  <script type="module">
+    import * as THREE from 'three';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+    import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+    const BG_GLB = 'dinner_table-v2.glb';
+
+    let tablePromise = null;
+    function loadTable() {
+      if (!tablePromise) {
+        const loader = new GLTFLoader();
+        tablePromise = new Promise((resolve, reject) => {
+          loader.load(BG_GLB, resolve, undefined, reject);
+        });
+      }
+      return tablePromise;
+    }
+    // Eager preload (brak lazy loading) — stół 476 KB
+    loadTable().catch((e) => console.warn('Nie wczytano stołu:', e));
+
+    function bytesToArrayBuffer(bytes) {
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    }
+
+    function parseProduct(bytes, format) {
+      const ab = bytesToArrayBuffer(bytes);
+      if (format === 'stl') {
+        const geom = new STLLoader().parse(ab);
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9aa7b5, metalness: 0.15, roughness: 0.65 });
+        return Promise.resolve(new THREE.Mesh(geom, mat));
+      }
+      return new Promise((resolve, reject) => {
+        new ThreeMFLoader().parse(ab, '', resolve, reject);
+      });
+    }
+
+    function fitCamera(camera, object3d) {
+      const box = new THREE.Box3().setFromObject(object3d);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxSize = Math.max(size.x, size.y, size.z) || 1;
+      const fitDist = (maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360)));
+      const distance = 1.4 * fitDist;
+      const dir = new THREE.Vector3(1, 0.85, 1).normalize();
+      camera.position.copy(center).add(dir.multiplyScalar(distance));
+      camera.near = distance / 100;
+      camera.far = distance * 100;
+      camera.updateProjectionMatrix();
+      camera.lookAt(center);
+    }
+
+    async function generateModelThumbnail(bytes, format) {
+      const tableGltf = await loadTable();
+      const product = await parseProduct(bytes, format);
+
+      const scene = new THREE.Scene();
+      const bgTex = await new THREE.TextureLoader().loadAsync('bg.jpg');
+      bgTex.colorSpace = THREE.SRGBColorSpace;
+      scene.background = bgTex;
+
+      const table = tableGltf.scene.clone(true);
+      scene.add(table);
+
+      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+      const dlight = new THREE.DirectionalLight(0xffffff, 1.1);
+      dlight.position.set(5, 10, 7);
+      scene.add(dlight);
+
+      const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      const renderPx = 512;
+      renderer.setPixelRatio(1);
+      renderer.setSize(renderPx, renderPx);
+      scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+      // Pozycjonowanie produktu na stole
+      const tableBox = new THREE.Box3().setFromObject(table);
+      const tableW = tableBox.max.x - tableBox.min.x;
+      const topY = tableBox.max.y;
+      const tableCenter = tableBox.getCenter(new THREE.Vector3());
+
+      scene.add(product);
+      let pBox = new THREE.Box3().setFromObject(product);
+      const pSize = pBox.getSize(new THREE.Vector3());
+      const maxDim = Math.max(pSize.x, pSize.y, pSize.z) || 1;
+      product.scale.setScalar((tableW * 0.4) / maxDim);
+      pBox = new THREE.Box3().setFromObject(product);
+      const pCenter = pBox.getCenter(new THREE.Vector3());
+      product.position.x += (tableCenter.x - pCenter.x);
+      product.position.z += (tableCenter.z - pCenter.z);
+      product.position.y += (topY - pBox.min.y);
+
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+      fitCamera(camera, scene);
+
+      renderer.render(scene, camera);
+
+      // Downscale do 400px i zapisz jako AVIF/PNG -> Base122
+      const out = document.createElement('canvas');
+      out.width = 400; out.height = 400;
+      const octx = out.getContext('2d');
+      octx.drawImage(renderer.domElement, 0, 0, 400, 400);
+
+      let dataUrl, usedFallback = false;
+      try {
+        dataUrl = out.toDataURL('image/avif', 0.7);
+        if (!dataUrl || !dataUrl.startsWith('data:image/avif')) throw new Error('no-avif');
+      } catch (e) {
+        usedFallback = true;
+        dataUrl = out.toDataURL('image/png', 0.85);
+      }
+
+      const binary = dataUrlToBinaryBytes(dataUrl);
+      const b122 = base122_encode(binary);
+      document.getElementById('product-image-data').value = b122;
+
+      const preview = document.getElementById('product-image-preview');
+      const info = document.getElementById('product-image-info');
+      preview.src = dataUrl;
+      preview.classList.remove('hidden');
+      const kb = (b122.length * 8 / 7) / 1024;
+      info.textContent = 'Miniaturka (stół) ' + (usedFallback ? 'PNG' : 'AVIF') + ' + Base122, ~' + kb.toFixed(1) + ' KB';
+
+      renderer.dispose();
+      return b122;
+    }
+
+    window.generateModelThumbnail = generateModelThumbnail;
+  </script>
 
 </body>
 </html>
