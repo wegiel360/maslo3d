@@ -125,23 +125,57 @@
     for (let i = 0; i < BASE122_ALPHABET.length; i++) BASE122_REV_MAP[BASE122_ALPHABET[i]] = i;
     const B122_LEN_CHARS = 4; // prefiks długości (do 122^4 ≈ 21M bajtów)
 
-    // Uint8Array -> Base122 (BigInt, stała szerokość prefiksu zachowuje wiodące zera)
+    // Nowy format: dane dzielone na chunki po CHUNK bajtów -> OUT znaków Base122.
+    // Tylko arytmetyka Number (bez wielkich BigInt) -> O(N), stała pamięć.
+    const B122_CHUNK = 5;   // 5 bajtów -> wartość < 2^40, *122 mieści się w safe integer
+    const B122_OUT = 6;     // 122^6 > 2^40, więc 6 znaków wystarczy
+
+    // Uint8Array -> Base122 (chunkowany, Number-only)
     function base122_encode(buf) {
-      if (buf.length === 0) return '';
-      let len = BigInt(buf.length);
+      if (!buf || buf.length === 0) return '';
+      let len = BigInt(buf.length); // długość jest mała, BigInt tu jest bezpieczny
       let lenStr = '';
       for (let i = 0; i < B122_LEN_CHARS; i++) { lenStr = BASE122_ALPHABET[Number(len % 122n)] + lenStr; len = len / 122n; }
-      let n = 0n;
-      for (let i = 0; i < buf.length; i++) n = (n << 8n) | BigInt(buf[i]);
-      let dataStr = '';
-      if (n === 0n) dataStr = BASE122_ALPHABET[0];
-      else { while (n > 0n) { dataStr = BASE122_ALPHABET[Number(n % 122n)] + dataStr; n = n / 122n; } }
-      return lenStr + dataStr;
+      let out = '';
+      for (let i = 0; i < buf.length; i += B122_CHUNK) {
+        // pierwszy bajt chunku = najmniej znaczący (LSB-first), by decode + slice były spójne
+        let v = 0;
+        for (let j = B122_CHUNK - 1; j >= 0; j--) v = v * 256 + (i + j < buf.length ? buf[i + j] : 0);
+        const digs = [];
+        for (let k = 0; k < B122_OUT; k++) { digs.push(v % 122); v = Math.floor(v / 122); }
+        let s = '';
+        for (let k = digs.length - 1; k >= 0; k--) s += BASE122_ALPHABET[digs[k]];
+        out += s;
+      }
+      return lenStr + out;
     }
 
-    // Base122 -> Uint8Array
-    function base122_decode(str) {
-      if (!str || str.length === 0) return new Uint8Array(0);
+    // Dekodowanie nowego formatu (Number-only). Zwraca null, gdy to nie ten format.
+    function tryDecodeNew(str) {
+      if (!str || str.length <= B122_LEN_CHARS) return null;
+      const lenStr = str.slice(0, B122_LEN_CHARS);
+      const dataStr = str.slice(B122_LEN_CHARS);
+      let len = 0n;
+      for (const c of lenStr) { const ci = BASE122_REV_MAP[c]; if (ci === undefined) return null; len = len * 122n + BigInt(ci); }
+      const lenNum = Number(len);
+      if (lenNum === 0) return new Uint8Array(0);
+      if (dataStr.length % B122_OUT !== 0) return null;
+      if (dataStr.length !== B122_OUT * Math.ceil(lenNum / B122_CHUNK)) return null;
+      const bytes = [];
+      for (let i = 0; i < dataStr.length; i += B122_OUT) {
+        let v = 0;
+        for (let k = 0; k < B122_OUT; k++) {
+          const ci = BASE122_REV_MAP[dataStr[i + k]];
+          if (ci === undefined) return null;
+          v = v * 122 + ci;
+        }
+        for (let j = B122_CHUNK - 1; j >= 0; j--) { bytes.push(v & 0xFF); v = Math.floor(v / 256); }
+      }
+      return new Uint8Array(bytes.slice(0, lenNum));
+    }
+
+    // Stary (legacy) dekoder monoliticzny — tylko jako fallback dla danych w Firestore.
+    function decodeMonolithic(str) {
       const lenStr = str.slice(0, B122_LEN_CHARS);
       const dataStr = str.slice(B122_LEN_CHARS);
       let len = 0n;
@@ -149,13 +183,21 @@
       const lenNum = Number(len);
       if (lenNum === 0) return new Uint8Array(0);
       let n = 0n;
-      for (const c of dataStr) { const ci = BASE122_REV_MAP[c]; if (ci === undefined) continue; n = n * 122n + BigInt(c); }
+      for (const c of dataStr) { const ci = BASE122_REV_MAP[c]; if (ci === undefined) continue; n = n * 122n + BigInt(ci); }
       const bytes = [];
       if (n === 0n) bytes.push(0);
       else { while (n > 0n) { bytes.push(Number(n & 0xFFn)); n = n >> 8n; } }
       bytes.reverse();
       while (bytes.length < lenNum) bytes.unshift(0);
       return new Uint8Array(bytes.slice(0, lenNum));
+    }
+
+    // Base122 -> Uint8Array (najpierw nowy format, weryfikacja, potem fallback legacy)
+    function base122_decode(str) {
+      const dec = tryDecodeNew(str);
+      if (dec !== null && base122_encode(dec) === str) return dec;
+      try { return decodeMonolithic(str); }
+      catch (e) { return dec !== null ? dec : new Uint8Array(0); }
     }
 
     // data: URL (base64) -> Uint8Array (surowe bajty)
