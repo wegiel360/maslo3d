@@ -2525,7 +2525,22 @@
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
               <button id="refresh-thumb-btn" type="button"
                 class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Odśwież miniaturkę</button>
-              <div id="rot-controls" class="hidden mt-3 space-y-2">
+              <div id="rot-controls" class="hidden mt-3 space-y-3">
+                <div>
+                  <p class="text-xs text-slate-500 mb-1">Widok kamery</p>
+                  <div id="view-presets" class="flex flex-wrap gap-2">
+                    <button type="button" data-view="front"
+                      class="view-preset-btn px-2.5 py-1 rounded-lg bg-base border border-white/10 text-slate-300 text-xs hover:border-accent/50 transition">Przód</button>
+                    <button type="button" data-view="iso"
+                      class="view-preset-btn px-2.5 py-1 rounded-lg bg-accent/30 border border-accent/40 text-accent text-xs">Izometria</button>
+                    <button type="button" data-view="top"
+                      class="view-preset-btn px-2.5 py-1 rounded-lg bg-base border border-white/10 text-slate-300 text-xs hover:border-accent/50 transition">Z góry</button>
+                    <button type="button" data-view="left"
+                      class="view-preset-btn px-2.5 py-1 rounded-lg bg-base border border-white/10 text-slate-300 text-xs hover:border-accent/50 transition">Lewo</button>
+                    <button type="button" data-view="right"
+                      class="view-preset-btn px-2.5 py-1 rounded-lg bg-base border border-white/10 text-slate-300 text-xs hover:border-accent/50 transition">Prawo</button>
+                  </div>
+                </div>
                 <p class="text-xs text-slate-500">Obrót modelu (stopnie)</p>
                 <div class="flex gap-3">
                   <label class="flex-1 text-xs text-slate-400">X (obrót poziomy)
@@ -2659,6 +2674,16 @@
 
     const deg2rad = (d) => d * Math.PI / 180;
 
+    // 5 presetów widoku kamery (model zawsze wyśrodkowany i wypełnia kadr)
+    const VIEW_PRESETS = {
+      iso: [1, 0.9, 1],
+      front: [0, 0.5, 1],
+      top: [0, 1, 0.2],
+      left: [-1, 0.5, 0],
+      right: [1, 0.5, 0]
+    };
+    let currentView = 'iso';
+
     // Odczyt obrotu XYZ (stopnie) z kontrolek w formularzu
     function readRotationDeg() {
       const g = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
@@ -2697,19 +2722,35 @@
       product.rotation.set(deg2rad(rot[0]), deg2rad(rot[1]), deg2rad(rot[2]));
       product.updateMatrixWorld(true);
 
-      // Kamera dopasowana do modelu tak, by wypełniał całą miniaturkę
+      // Kamera dopasowana do modelu tak, by wypełniał całą miniaturkę,
+      // niezależnie od rotacji (dopasowanie do rzutu bbox na ekran).
       box = new THREE.Box3().setFromObject(product);
-      const sphere = box.getBoundingSphere(new THREE.Sphere());
-      const radius = Math.max(sphere.radius, 1e-5);
+      const c2 = box.getCenter(new THREE.Vector3());
+      const corners = new THREE.Box3().setFromObject(product)
+        .corners(new THREE.Vector3());
+      corners.forEach((p) => p.sub(c2));
+
       const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
       const tanHalf = Math.tan(deg2rad(camera.fov) / 2);
-      const dist = (radius / tanHalf) * 1.05;
-      const dir = new THREE.Vector3(1, 0.9, 1).normalize();
-      camera.position.copy(sphere.center).add(dir.multiplyScalar(dist));
+      const vUp = new THREE.Vector3(0, 1, 0);
+      const dir = new THREE.Vector3(...VIEW_PRESETS[currentView]).normalize();
+      const right = new THREE.Vector3().crossVectors(dir, vUp).normalize();
+      const upB = new THREE.Vector3().crossVectors(right, dir).normalize();
+
+      let maxProj = 1e-5;
+      corners.forEach((p) => {
+        const ur = Math.abs(right.dot(p));
+        const vr = Math.abs(upB.dot(p));
+        maxProj = Math.max(maxProj, ur, vr);
+      });
+      const targetFill = 0.92; // 92% kwadratu, mały margines
+      const dist = (maxProj / targetFill) / tanHalf;
+
+      camera.position.copy(c2).add(dir.multiplyScalar(dist));
       camera.near = dist / 1000;
       camera.far = dist * 1000;
       camera.updateProjectionMatrix();
-      camera.lookAt(sphere.center);
+      camera.lookAt(c2);
 
       renderer.render(scene, camera);
 
@@ -2792,6 +2833,21 @@
     });
     const applyBtn = document.getElementById('apply-rot-btn');
     if (applyBtn) applyBtn.addEventListener('click', refreshFromStored);
+
+    // Presety widoku kamery — przełączają kąt kamery i ponownie renderują
+    const presetActive = 'bg-accent/30 border-accent/40 text-accent';
+    const presetIdle = 'bg-base border-white/10 text-slate-300 hover:border-accent/50';
+    function selectView(view) {
+      currentView = view;
+      document.querySelectorAll('.view-preset-btn').forEach((b) => {
+        b.className = 'view-preset-btn px-2.5 py-1 rounded-lg border text-xs transition ' +
+          (b.getAttribute('data-view') === view ? presetActive : presetIdle);
+      });
+      refreshFromStored();
+    }
+    document.querySelectorAll('.view-preset-btn').forEach((btn) => {
+      btn.addEventListener('click', function () { selectView(this.getAttribute('data-view')); });
+    });
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
