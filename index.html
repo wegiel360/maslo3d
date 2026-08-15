@@ -2726,8 +2726,13 @@
       // niezależnie od rotacji (dopasowanie do rzutu bbox na ekran).
       box = new THREE.Box3().setFromObject(product);
       const c2 = box.getCenter(new THREE.Vector3());
-      const corners = new THREE.Box3().setFromObject(product)
-        .corners(new THREE.Vector3());
+      const mn = box.min, mx = box.max;
+      const corners = [
+        new THREE.Vector3(mn.x, mn.y, mn.z), new THREE.Vector3(mx.x, mn.y, mn.z),
+        new THREE.Vector3(mn.x, mx.y, mn.z), new THREE.Vector3(mx.x, mx.y, mn.z),
+        new THREE.Vector3(mn.x, mn.y, mx.z), new THREE.Vector3(mx.x, mn.y, mx.z),
+        new THREE.Vector3(mn.x, mx.y, mx.z), new THREE.Vector3(mx.x, mx.y, mx.z)
+      ];
       corners.forEach((p) => p.sub(c2));
 
       const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
