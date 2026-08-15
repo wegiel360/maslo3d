@@ -2769,10 +2769,26 @@
     const refreshBtn = document.getElementById('refresh-thumb-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', refreshFromStored);
 
-    // Zmiana suwaków obrotu -> automatyczne ponowne renderowanie
+    // Zmiana suwaków obrotu -> automatyczne ponowne renderowanie.
+    // Scroll zmienia wartość pola; render throttled co 0.75s w trakcie scrollowania.
+    let rotRefreshTimer = null;
+    function scheduleRotRefresh() {
+      clearTimeout(rotRefreshTimer);
+      rotRefreshTimer = setTimeout(refreshFromStored, 750);
+    }
+
     ['x', 'y', 'z'].forEach((axis) => {
       const el = document.getElementById('rot-' + axis);
-      if (el) el.addEventListener('change', refreshFromStored);
+      if (!el) return;
+      el.addEventListener('input', scheduleRotRefresh);
+      el.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        const step = parseFloat(el.step) || 1;
+        const cur = parseFloat(el.value) || 0;
+        const delta = e.deltaY > 0 ? -step : step;
+        el.value = cur + delta;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+      }, { passive: false });
     });
     const applyBtn = document.getElementById('apply-rot-btn');
     if (applyBtn) applyBtn.addEventListener('click', refreshFromStored);
