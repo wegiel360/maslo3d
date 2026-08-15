@@ -2648,7 +2648,7 @@
       const ab = bytesToArrayBuffer(bytes);
       if (fmt === 'stl') {
         const geom = new STLLoader().parse(ab);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x9aa7b5, metalness: 0.15, roughness: 0.65 });
+        const mat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, metalness: 0.15, roughness: 0.65 });
         return Promise.resolve(new THREE.Mesh(geom, mat));
       }
       return new Promise((resolve, reject) => {
@@ -2705,7 +2705,7 @@
       let pBox = new THREE.Box3().setFromObject(product);
       const pSize = pBox.getSize(new THREE.Vector3());
       const maxDim = Math.max(pSize.x, pSize.y, pSize.z) || 1;
-      product.scale.setScalar((tableW * 0.4) / maxDim);
+      product.scale.setScalar((tableW * 0.13) / maxDim);
       pBox = new THREE.Box3().setFromObject(product);
       const pCenter = pBox.getCenter(new THREE.Vector3());
       product.position.x += (tableCenter.x - pCenter.x);
