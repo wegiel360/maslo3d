@@ -2552,9 +2552,17 @@
                   <option value="topRight">Z góry, prawo</option>
                 </select>
                 <label for="fov-slider" class="block text-xs text-slate-500 mt-3 mb-1">Przybliżenie (FOV <span id="fov-value">45</span>°)</label>
-                <input id="fov-slider" type="range" min="20" max="80" step="1" value="45"
+                <input id="fov-slider" type="range" min="15" max="75" step="1" value="45"
                   class="w-full accent-accent cursor-pointer"
                   oninput="window.__setFov(this.value)" />
+                <label for="size-slider" class="block text-xs text-slate-500 mt-3 mb-1">Wielkość modelu (<span id="size-value">100</span>%)</label>
+                <input id="size-slider" type="range" min="40" max="200" step="5" value="100"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setSize(this.value)" />
+                <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                  <input id="auto-center-toggle" type="checkbox" checked class="accent-accent" />
+                  <span class="text-xs text-slate-500">Auto wyśrodkowanie</span>
+                </label>
               </div>
             </div>
             <div>
@@ -2696,6 +2704,9 @@
     };
     let currentView = 'iso';
     let currentFov = 45;
+    let sizeFactor = 1;
+    let autoCenter = true;
+    const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartości
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
@@ -2713,7 +2724,7 @@
       const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(1);
-      renderer.setSize(512, 512);
+      renderer.setSize(400, 400);
       scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
       // Wyśrodkowanie modelu wokół początku układu (rotacja wokół środka)
@@ -2721,11 +2732,14 @@
       product.updateMatrixWorld(true);
       let box = new THREE.Box3().setFromObject(product);
       const center = box.getCenter(new THREE.Vector3());
-      product.position.set(-center.x, -center.y, -center.z);
-      product.updateMatrixWorld(true);
+      if (autoCenter) {
+        product.position.set(-center.x, -center.y, -center.z);
+        product.updateMatrixWorld(true);
+      }
 
-      // Kamera dopasowana do modelu tak, by wypełniał całą miniaturkę,
-      // niezależnie od rotacji (dopasowanie do rzutu bbox na ekran).
+      // Dopasowanie kamery: perspektywiczne (uwzględnia głębię, więc bez przycinania
+      // w widokach z tyłu) i rozprzęgnięte od FOV (dystans liczony raz na REF_FOV,
+      // a FOV działa jak prawdziwy zoom).
       box = new THREE.Box3().setFromObject(product);
       const c2 = box.getCenter(new THREE.Vector3());
       const mn = box.min, mx = box.max;
@@ -2738,24 +2752,33 @@
       corners.forEach((p) => p.sub(c2));
 
       const camera = new THREE.PerspectiveCamera(currentFov, 1, 0.1, 100);
-      const tanHalf = Math.tan(deg2rad(camera.fov) / 2);
       const vUp = new THREE.Vector3(0, 1, 0);
       const dir = new THREE.Vector3(...VIEW_PRESETS[currentView]).normalize();
       const right = new THREE.Vector3().crossVectors(dir, vUp).normalize();
       const upB = new THREE.Vector3().crossVectors(right, dir).normalize();
 
-      let maxProj = 1e-5;
-      corners.forEach((p) => {
-        const ur = Math.abs(right.dot(p));
-        const vr = Math.abs(upB.dot(p));
-        maxProj = Math.max(maxProj, ur, vr);
-      });
-      const targetFill = 0.92; // 92% kwadratu, mały margines
-      const dist = (maxProj / targetFill) / tanHalf;
+      // Rzutowane położenie na ekranie (perspektywa): (right·p)/depth itd.
+      const refTanHalf = Math.tan(deg2rad(REF_FOV) / 2);
+      const targetFill = 0.92;
+      const proj = (p, d) => {
+        const depth = Math.abs(d - dir.dot(p));
+        const scale = Math.max(depth, 1e-6);
+        return Math.max(Math.abs(right.dot(p)) / scale, Math.abs(upB.dot(p)) / scale);
+      };
+      // Iteracyjne znalezienie dystansu, przy którym model wypełnia targetFill w REF_FOV
+      let dist = 1;
+      for (let it = 0; it < 8; it++) {
+        let maxNdc = 1e-6;
+        corners.forEach((p) => { maxNdc = Math.max(maxNdc, proj(p, dist)); });
+        if (maxNdc <= 0) break;
+        dist *= maxNdc / (targetFill * refTanHalf);
+      }
+      // FOV i wielkość modelu jako niezależne mnożniki (FOV teraz realnie skaluje widok)
+      const renderDist = (dist / sizeFactor) * (Math.tan(deg2rad(REF_FOV) / 2) / Math.tan(deg2rad(currentFov) / 2));
 
-      camera.position.copy(c2).add(dir.multiplyScalar(dist));
-      camera.near = dist / 1000;
-      camera.far = dist * 1000;
+      camera.position.copy(c2).add(dir.multiplyScalar(renderDist));
+      camera.near = renderDist / 1000;
+      camera.far = renderDist * 1000;
       camera.updateProjectionMatrix();
       camera.lookAt(c2);
 
@@ -2827,15 +2850,37 @@
     if (viewSelect) viewSelect.addEventListener('change', function () { selectView(this.value); });
 
     // Regulacja FOV (przybliżenie) — mniejszy FOV = mocniejszy zoom
+    let fovTimer = null;
     function setFov(val) {
-      currentFov = Math.max(20, Math.min(80, parseFloat(val) || 45));
+      currentFov = Math.max(15, Math.min(75, parseFloat(val) || 45));
       const lbl = document.getElementById('fov-value');
       if (lbl) lbl.textContent = Math.round(currentFov);
-      refreshFromStored();
+      clearTimeout(fovTimer);
+      fovTimer = setTimeout(refreshFromStored, 200); // debounce -> mniej lagu
     }
     window.__setFov = function (v) { setFov(v); };
     const fovSlider = document.getElementById('fov-slider');
     if (fovSlider) fovSlider.addEventListener('input', function () { setFov(this.value); });
+
+    // Regulacja wielkości modelu (%)
+    let sizeTimer = null;
+    function setSize(val) {
+      sizeFactor = (Math.max(40, Math.min(200, parseFloat(val) || 100))) / 100;
+      const slbl = document.getElementById('size-value');
+      if (slbl) slbl.textContent = Math.round(sizeFactor * 100);
+      clearTimeout(sizeTimer);
+      sizeTimer = setTimeout(refreshFromStored, 200); // debounce
+    }
+    window.__setSize = function (v) { setSize(v); };
+    const sizeSlider = document.getElementById('size-slider');
+    if (sizeSlider) sizeSlider.addEventListener('input', function () { setSize(this.value); });
+
+    // Auto wyśrodkowanie (przełącznik)
+    const autoCenterToggle = document.getElementById('auto-center-toggle');
+    if (autoCenterToggle) autoCenterToggle.addEventListener('change', function () {
+      autoCenter = this.checked;
+      refreshFromStored();
+    });
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
