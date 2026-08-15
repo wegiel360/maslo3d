@@ -1552,10 +1552,12 @@
         document.getElementById('product-model-data').value = b122;
         var kb = (b122.length * 8 / 7) / 1024;
         info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB - Base122)';
-        // Pokaż przycisk odświeżania miniaturki
+        // Pokaż przycisk odświeżania miniaturki + kontrolki obrotu XYZ
         var rb = document.getElementById('refresh-thumb-btn');
         if (rb) rb.classList.remove('hidden');
-        // Auto-generuj miniaturkę z modelu 3D (stół + tło)
+        var rotc = document.getElementById('rot-controls');
+        if (rotc) rotc.classList.remove('hidden');
+        // Auto-generuj miniaturkę z modelu 3D (tło + obrót XYZ)
         if (window.generateModelThumbnail) {
           window.generateModelThumbnail(binary, ext).catch(function (err) {
             console.error('Miniaturka nieudana:', err);
@@ -1758,6 +1760,8 @@
       document.getElementById('product-image-info').classList.add('text-slate-500');
       var rb3 = document.getElementById('refresh-thumb-btn');
       if (rb3) rb3.classList.add('hidden');
+      var rotc3 = document.getElementById('rot-controls');
+      if (rotc3) rotc3.classList.add('hidden');
       document.getElementById('product-model-data').value = '';
       document.getElementById('product-model-info').textContent = '';
       resetBundleUI();
@@ -2521,6 +2525,25 @@
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
               <button id="refresh-thumb-btn" type="button"
                 class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Odśwież miniaturkę</button>
+              <div id="rot-controls" class="hidden mt-3 space-y-2">
+                <p class="text-xs text-slate-500">Obrót modelu (stopnie)</p>
+                <div class="flex gap-3">
+                  <label class="flex-1 text-xs text-slate-400">X (obrót poziomy)
+                    <input id="rot-x" type="number" value="0" step="1"
+                      class="mt-1 w-full bg-base border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white focus:border-accent focus:outline-none" />
+                  </label>
+                  <label class="flex-1 text-xs text-slate-400">Y (obrót pionowy)
+                    <input id="rot-y" type="number" value="0" step="1"
+                      class="mt-1 w-full bg-base border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white focus:border-accent focus:outline-none" />
+                  </label>
+                  <label class="flex-1 text-xs text-slate-400">Z (obrót wokół osi Z)
+                    <input id="rot-z" type="number" value="0" step="1"
+                      class="mt-1 w-full bg-base border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white focus:border-accent focus:outline-none" />
+                  </label>
+                </div>
+                <button id="apply-rot-btn" type="button"
+                  class="px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Zastosuj obrót</button>
+              </div>
             </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
@@ -2602,36 +2625,14 @@
 
   <!-- ============================================================
        Generowanie miniaturki z modelu 3D (STL/3MF) przez Three.js.
-       Tło: bg.jpg + stół dinner_table-v2.glb (CC-BY-4.0, Sketchfab).
-       Model wczytany przez użytkownika jest stawiany na stole i
-       renderowany do 400px AVIF/PNG -> Base122 (#product-image-data).
+       Model wypełnia cały kwadrat, obrót XYZ z kontrolek w formularzu.
+       Render 400px AVIF/PNG -> Base122 (#product-image-data).
        ============================================================ -->
   <script type="module">
     import * as THREE from 'three';
-    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { STLLoader } from 'three/addons/loaders/STLLoader.js';
     import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
-    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-
-    const BG_GLB = 'dinner_table-v2.glb';
-
-    let tablePromise = null;
-    function loadTable() {
-      if (!tablePromise) {
-        const loader = new GLTFLoader();
-        // dinner_table-v2.glb jest skompresowany Draco — potrzebny dekoder
-        const draco = new DRACOLoader();
-        draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
-        loader.setDRACOLoader(draco);
-        tablePromise = new Promise((resolve, reject) => {
-          loader.load(BG_GLB, resolve, undefined, reject);
-        });
-      }
-      return tablePromise;
-    }
-    // Eager preload (brak lazy loading) — stół 476 KB
-    loadTable().catch((e) => console.warn('Nie wczytano stołu:', e));
 
     function bytesToArrayBuffer(bytes) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -2656,23 +2657,15 @@
       });
     }
 
-    function fitCamera(camera, object3d) {
-      const box = new THREE.Box3().setFromObject(object3d);
-      const size = box.getSize(new THREE.Vector3());
-      const center = box.getCenter(new THREE.Vector3());
-      const maxSize = Math.max(size.x, size.y, size.z) || 1;
-      const fitDist = (maxSize / (2 * Math.atan((Math.PI * camera.fov) / 360)));
-      const distance = 1.4 * fitDist;
-      const dir = new THREE.Vector3(1, 0.85, 1).normalize();
-      camera.position.copy(center).add(dir.multiplyScalar(distance));
-      camera.near = distance / 100;
-      camera.far = distance * 100;
-      camera.updateProjectionMatrix();
-      camera.lookAt(center);
+    const deg2rad = (d) => d * Math.PI / 180;
+
+    // Odczyt obrotu XYZ (stopnie) z kontrolek w formularzu
+    function readRotationDeg() {
+      const g = (id) => { const el = document.getElementById(id); return el ? (parseFloat(el.value) || 0) : 0; };
+      return [g('rot-x'), g('rot-y'), g('rot-z')];
     }
 
     async function generateModelThumbnail(bytes, format) {
-      const tableGltf = await loadTable();
       const product = await parseProduct(bytes, format);
 
       const scene = new THREE.Scene();
@@ -2680,44 +2673,47 @@
       bgTex.colorSpace = THREE.SRGBColorSpace;
       scene.background = bgTex;
 
-      const table = tableGltf.scene.clone(true);
-      scene.add(table);
-
-      scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-      const dlight = new THREE.DirectionalLight(0xffffff, 1.1);
-      dlight.position.set(5, 10, 7);
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dlight = new THREE.DirectionalLight(0xffffff, 1.2);
+      dlight.position.set(6, 12, 8);
       scene.add(dlight);
 
       const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-      const renderPx = 512;
       renderer.setPixelRatio(1);
-      renderer.setSize(renderPx, renderPx);
+      renderer.setSize(512, 512);
       scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 
-      // Pozycjonowanie produktu na stole
-      const tableBox = new THREE.Box3().setFromObject(table);
-      const tableW = tableBox.max.x - tableBox.min.x;
-      const topY = tableBox.max.y;
-      const tableCenter = tableBox.getCenter(new THREE.Vector3());
-
+      // Wyśrodkowanie modelu wokół początku układu (rotacja wokół środka)
       scene.add(product);
-      let pBox = new THREE.Box3().setFromObject(product);
-      const pSize = pBox.getSize(new THREE.Vector3());
-      const maxDim = Math.max(pSize.x, pSize.y, pSize.z) || 1;
-      product.scale.setScalar((tableW * 0.13) / maxDim);
-      pBox = new THREE.Box3().setFromObject(product);
-      const pCenter = pBox.getCenter(new THREE.Vector3());
-      product.position.x += (tableCenter.x - pCenter.x);
-      product.position.z += (tableCenter.z - pCenter.z);
-      product.position.y += (topY - pBox.min.y);
+      product.updateMatrixWorld(true);
+      let box = new THREE.Box3().setFromObject(product);
+      const center = box.getCenter(new THREE.Vector3());
+      product.position.set(-center.x, -center.y, -center.z);
+      product.updateMatrixWorld(true);
 
-      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-      fitCamera(camera, scene);
+      // Obrót XYZ z kontrolek (stopnie -> radiany)
+      const rot = readRotationDeg();
+      product.rotation.set(deg2rad(rot[0]), deg2rad(rot[1]), deg2rad(rot[2]));
+      product.updateMatrixWorld(true);
+
+      // Kamera dopasowana do modelu tak, by wypełniał całą miniaturkę
+      box = new THREE.Box3().setFromObject(product);
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      const radius = Math.max(sphere.radius, 1e-5);
+      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+      const tanHalf = Math.tan(deg2rad(camera.fov) / 2);
+      const dist = (radius / tanHalf) * 1.05;
+      const dir = new THREE.Vector3(1, 0.9, 1).normalize();
+      camera.position.copy(sphere.center).add(dir.multiplyScalar(dist));
+      camera.near = dist / 1000;
+      camera.far = dist * 1000;
+      camera.updateProjectionMatrix();
+      camera.lookAt(sphere.center);
 
       renderer.render(scene, camera);
 
-      // Downscale do 400px i zapisz jako AVIF/PNG -> Base122
+      // Zapis 400px jako AVIF/PNG -> Base122
       const out = document.createElement('canvas');
       out.width = 400; out.height = 400;
       const octx = out.getContext('2d');
@@ -2741,7 +2737,7 @@
       preview.src = dataUrl;
       preview.classList.remove('hidden');
       const kb = (b122.length * 8 / 7) / 1024;
-      info.textContent = 'Miniaturka (stół) ' + (usedFallback ? 'PNG' : 'AVIF') + ' + Base122, ~' + kb.toFixed(1) + ' KB';
+      info.textContent = 'Miniaturka ' + (usedFallback ? 'PNG' : 'AVIF') + ' + Base122, ~' + kb.toFixed(1) + ' KB';
       info.classList.remove('text-amber-400');
       info.classList.add('text-slate-500');
 
@@ -2772,6 +2768,14 @@
 
     const refreshBtn = document.getElementById('refresh-thumb-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', refreshFromStored);
+
+    // Zmiana suwaków obrotu -> automatyczne ponowne renderowanie
+    ['x', 'y', 'z'].forEach((axis) => {
+      const el = document.getElementById('rot-' + axis);
+      if (el) el.addEventListener('change', refreshFromStored);
+    });
+    const applyBtn = document.getElementById('apply-rot-btn');
+    if (applyBtn) applyBtn.addEventListener('click', refreshFromStored);
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
