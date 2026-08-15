@@ -2551,6 +2551,10 @@
                   <option value="topLeft">Z góry, lewo</option>
                   <option value="topRight">Z góry, prawo</option>
                 </select>
+                <label for="fov-slider" class="block text-xs text-slate-500 mt-3 mb-1">Przybliżenie (FOV <span id="fov-value">45</span>°)</label>
+                <input id="fov-slider" type="range" min="20" max="80" step="1" value="45"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setFov(this.value)" />
               </div>
             </div>
             <div>
@@ -2691,6 +2695,7 @@
       isoShallow: [2, 0.5, 1]
     };
     let currentView = 'iso';
+    let currentFov = 45;
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
@@ -2732,7 +2737,7 @@
       ];
       corners.forEach((p) => p.sub(c2));
 
-      const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
+      const camera = new THREE.PerspectiveCamera(currentFov, 1, 0.1, 100);
       const tanHalf = Math.tan(deg2rad(camera.fov) / 2);
       const vUp = new THREE.Vector3(0, 1, 0);
       const dir = new THREE.Vector3(...VIEW_PRESETS[currentView]).normalize();
@@ -2820,6 +2825,17 @@
     window.__setView = function (v) { selectView(v); };
     const viewSelect = document.getElementById('view-presets');
     if (viewSelect) viewSelect.addEventListener('change', function () { selectView(this.value); });
+
+    // Regulacja FOV (przybliżenie) — mniejszy FOV = mocniejszy zoom
+    function setFov(val) {
+      currentFov = Math.max(20, Math.min(80, parseFloat(val) || 45));
+      const lbl = document.getElementById('fov-value');
+      if (lbl) lbl.textContent = Math.round(currentFov);
+      refreshFromStored();
+    }
+    window.__setFov = function (v) { setFov(v); };
+    const fovSlider = document.getElementById('fov-slider');
+    if (fovSlider) fovSlider.addEventListener('input', function () { setFov(this.value); });
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
