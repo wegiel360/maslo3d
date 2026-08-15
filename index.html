@@ -2531,10 +2531,25 @@
                   class="w-full bg-base border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-accent focus:outline-none"
                   onchange="window.__setView(this.value)">
                   <option value="iso" selected>Izometria</option>
+                  <option value="isoHigh">Izometria wysoka</option>
+                  <option value="isoLow">Izometria niska</option>
+                  <option value="isoShallow">Izometria płytka</option>
                   <option value="front">Przód</option>
-                  <option value="top">Z góry</option>
+                  <option value="frontHigh">Przód wysoko</option>
+                  <option value="frontLow">Przód nisko</option>
+                  <option value="back">Tył</option>
+                  <option value="backLow">Tył nisko</option>
                   <option value="left">Lewo</option>
                   <option value="right">Prawo</option>
+                  <option value="rightFront">Prawy przód</option>
+                  <option value="leftFront">Lewy przód</option>
+                  <option value="rightBack">Prawy tył</option>
+                  <option value="leftBack">Lewy tył</option>
+                  <option value="top">Z góry</option>
+                  <option value="topFront">Z góry, przód</option>
+                  <option value="topBack">Z góry, tył</option>
+                  <option value="topLeft">Z góry, lewo</option>
+                  <option value="topRight">Z góry, prawo</option>
                 </select>
               </div>
             </div>
@@ -2652,13 +2667,28 @@
 
     const deg2rad = (d) => d * Math.PI / 180;
 
-    // 5 presetów widoku kamery (model zawsze wyśrodkowany i wypełnia kadr)
+    // 20 presetów widoku kamery (model zawsze wyśrodkowany i wypełnia kadr)
     const VIEW_PRESETS = {
       iso: [1, 0.9, 1],
       front: [0, 0.5, 1],
       top: [0, 1, 0.2],
       left: [-1, 0.5, 0],
-      right: [1, 0.5, 0]
+      right: [1, 0.5, 0],
+      back: [0, 0.5, -1],
+      isoHigh: [1, 1.5, 1],
+      isoLow: [1, 0.3, 1],
+      rightFront: [0.9, 0.5, 1],
+      leftFront: [-0.9, 0.5, 1],
+      rightBack: [0.9, 0.5, -1],
+      leftBack: [-0.9, 0.5, -1],
+      topFront: [0, 1, 0.6],
+      topRight: [0.7, 1, 0],
+      topLeft: [-0.7, 1, 0],
+      topBack: [0, 1, -0.6],
+      frontLow: [0, 0.15, 1],
+      backLow: [0, 0.15, -1],
+      frontHigh: [0, 1.1, 1],
+      isoShallow: [2, 0.5, 1]
     };
     let currentView = 'iso';
 
