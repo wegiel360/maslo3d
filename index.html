@@ -1510,11 +1510,17 @@
         document.getElementById('product-model-data').value = b122;
         var kb = (b122.length * 8 / 7) / 1024;
         info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB - Base122)';
+        // Pokaż przycisk odświeżania miniaturki
+        var rb = document.getElementById('refresh-thumb-btn');
+        if (rb) rb.classList.remove('hidden');
         // Auto-generuj miniaturkę z modelu 3D (stół + tło)
         if (window.generateModelThumbnail) {
           window.generateModelThumbnail(binary, ext).catch(function (err) {
             console.error('Miniaturka nieudana:', err);
-            document.getElementById('product-image-info').textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+            var i2 = document.getElementById('product-image-info');
+            i2.textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+            i2.classList.add('text-amber-400');
+            i2.classList.remove('text-slate-500');
           });
         }
       };
@@ -1638,6 +1644,8 @@
         modelDataInput.value = p.modelFile.data;
         var modelKb = (p.modelFile.data.length * 8 / 7) / 1024;
         modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB - Base122) — obecny plik (możesz wczytać nowy).';
+        var rb2 = document.getElementById('refresh-thumb-btn');
+        if (rb2) rb2.classList.remove('hidden');
       } else {
         modelDataInput.value = '';
         modelInfo.textContent = '';
@@ -1704,6 +1712,10 @@
       document.getElementById('product-image-data').value = '';
       document.getElementById('product-image-preview').classList.add('hidden');
       document.getElementById('product-image-info').textContent = '';
+      document.getElementById('product-image-info').classList.remove('text-amber-400');
+      document.getElementById('product-image-info').classList.add('text-slate-500');
+      var rb3 = document.getElementById('refresh-thumb-btn');
+      if (rb3) rb3.classList.add('hidden');
       document.getElementById('product-model-data').value = '';
       document.getElementById('product-model-info').textContent = '';
       resetBundleUI();
@@ -2465,6 +2477,8 @@
               <input id="product-image-data" type="hidden" value="" />
               <img id="product-image-preview" alt="Podgląd miniaturki" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
+              <button id="refresh-thumb-btn" type="button"
+                class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Odśwież miniaturkę</button>
             </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
@@ -2555,6 +2569,7 @@
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { STLLoader } from 'three/addons/loaders/STLLoader.js';
     import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
+    import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
     const BG_GLB = 'dinner_table-v2.glb';
@@ -2563,6 +2578,10 @@
     function loadTable() {
       if (!tablePromise) {
         const loader = new GLTFLoader();
+        // dinner_table-v2.glb jest skompresowany Draco — potrzebny dekoder
+        const draco = new DRACOLoader();
+        draco.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+        loader.setDRACOLoader(draco);
         tablePromise = new Promise((resolve, reject) => {
           loader.load(BG_GLB, resolve, undefined, reject);
         });
@@ -2576,9 +2595,16 @@
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     }
 
+    // Automatyczna detekcja: 3MF to ZIP (PK\x03\x04), STL to wszystko inne
+    function detectModelFormat(bytes) {
+      if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return '3mf';
+      return 'stl';
+    }
+
     function parseProduct(bytes, format) {
+      const fmt = format || detectModelFormat(bytes);
       const ab = bytesToArrayBuffer(bytes);
-      if (format === 'stl') {
+      if (fmt === 'stl') {
         const geom = new STLLoader().parse(ab);
         const mat = new THREE.MeshStandardMaterial({ color: 0x9aa7b5, metalness: 0.15, roughness: 0.65 });
         return Promise.resolve(new THREE.Mesh(geom, mat));
@@ -2674,11 +2700,38 @@
       preview.classList.remove('hidden');
       const kb = (b122.length * 8 / 7) / 1024;
       info.textContent = 'Miniaturka (stół) ' + (usedFallback ? 'PNG' : 'AVIF') + ' + Base122, ~' + kb.toFixed(1) + ' KB';
+      info.classList.remove('text-amber-400');
+      info.classList.add('text-slate-500');
 
       renderer.dispose();
       return b122;
     }
 
+    // Re-generacja miniaturki z już wczytanego modelu (bez ponownego wybierania pliku)
+    async function refreshFromStored() {
+      const data = document.getElementById('product-model-data').value;
+      const info = document.getElementById('product-image-info');
+      const btn = document.getElementById('refresh-thumb-btn');
+      if (!data) { alert('Najpierw wczytaj plik 3D (STL/3MF).'); return; }
+      if (btn) { btn.disabled = true; btn.textContent = 'Generuję…'; }
+      try {
+        await generateModelThumbnail(base122ToBinary(data));
+      } catch (err) {
+        console.error('Miniaturka nieudana:', err);
+        if (info) {
+          info.textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+          info.classList.add('text-amber-400');
+          info.classList.remove('text-slate-500');
+        }
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Odśwież miniaturkę'; }
+      }
+    }
+
+    const refreshBtn = document.getElementById('refresh-thumb-btn');
+    if (refreshBtn) refreshBtn.addEventListener('click', refreshFromStored);
+
+    // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
   </script>
 
