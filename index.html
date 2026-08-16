@@ -1,15 +1,15 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pl" class="dark">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f1a" />
-  <title>Masło3D - wydruki 3D</title>
-  <meta name="description" content="Masło3D - system zamówień wydruków 3D dla społeczności szkolnej. Wycena za gram, kolejka oczekujących i śledzenie zamówienia." />
+  <title>MasĹ‚o3D - wydruki 3D</title>
+  <meta name="description" content="MasĹ‚o3D - system zamĂłwieĹ„ wydrukĂłw 3D dla spoĹ‚ecznoĹ›ci szkolnej. Wycena za gram, kolejka oczekujÄ…cych i Ĺ›ledzenie zamĂłwienia." />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="logo-180.png" />
 
-  <!-- Preconnect do kluczowych źródeł (szybsze ładowanie SDK i CDN) -->
+  <!-- Preconnect do kluczowych ĹşrĂłdeĹ‚ (szybsze Ĺ‚adowanie SDK i CDN) -->
   <link rel="preconnect" href="https://www.gstatic.com" />
   <link rel="preconnect" href="https://www.googleapis.com" />
   <link rel="preconnect" href="https://cdn.tailwindcss.com" />
@@ -17,7 +17,7 @@
   <link rel="preconnect" href="https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app" crossorigin />
 
   <!-- ============================================================
-       T A I L W I N D  (CDN Play) - klasy narzędziowe
+       T A I L W I N D  (CDN Play) - klasy narzÄ™dziowe
        ============================================================ -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -41,17 +41,17 @@
 
   <!-- ============================================================
        F I R E B A S E  (Compat SDK - Realtime Database)
-       Prawdziwa konfiguracja projektu Masło3D (maslo-3d).
+       Prawdziwa konfiguracja projektu MasĹ‚o3D (maslo-3d).
        ============================================================ -->
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
   <!-- ============================================================
-       Q R C O D E  - ładowany lazy (tylko gdy potrzebny),
-       aby nie obciążać początkowego ładowania strony.
+       Q R C O D E  - Ĺ‚adowany lazy (tylko gdy potrzebny),
+       aby nie obciÄ…ĹĽaÄ‡ poczÄ…tkowego Ĺ‚adowania strony.
        ============================================================ -->
 
-  <!-- Tło aplikacji (obraz bliss) z ciemną nakładką dla czytelności -->
+  <!-- TĹ‚o aplikacji (obraz bliss) z ciemnÄ… nakĹ‚adkÄ… dla czytelnoĹ›ci -->
   <style>
     body {
       background:
@@ -59,15 +59,15 @@
         url('bg.jpg') center / cover fixed no-repeat;
     }
 
-    /* Glassmorphism - delikatne, półprzezroczyste panele (frosted glass).
-       Małe rozmycie + umiarkowana saturacja = lekki dla CPU, zachowuje efekt. */
+    /* Glassmorphism - delikatne, pĂłĹ‚przezroczyste panele (frosted glass).
+       MaĹ‚e rozmycie + umiarkowana saturacja = lekki dla CPU, zachowuje efekt. */
     [class*="bg-panel"] {
       background: rgba(18, 24, 38, 0.55);
       backdrop-filter: blur(10px) saturate(130%);
       -webkit-backdrop-filter: blur(10px) saturate(130%);
       border: 1px solid rgba(255, 255, 255, 0.10);
     }
-    /* Pola formularzy zachowują czytelność bez rozmycia tła */
+    /* Pola formularzy zachowujÄ… czytelnoĹ›Ä‡ bez rozmycia tĹ‚a */
     input[class*="bg-panel"],
     select[class*="bg-panel"],
     textarea[class*="bg-panel"] {
@@ -75,14 +75,14 @@
       backdrop-filter: none;
       -webkit-backdrop-filter: none;
     }
-    /* Górne paski (sticky) - mniejsze rozmycie, by oszczędzać CPU */
+    /* GĂłrne paski (sticky) - mniejsze rozmycie, by oszczÄ™dzaÄ‡ CPU */
     header.backdrop-blur-xl {
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
   </style>
 
-  <!-- Three.js (moduł ES) do generowania miniaturki z modelu 3D -->
+  <!-- Three.js (moduĹ‚ ES) do generowania miniaturki z modelu 3D -->
   <script type="importmap">
   {
     "imports": {
@@ -96,8 +96,8 @@
 <body class="bg-base text-slate-200 font-sans min-h-screen">
 
   <!-- ============================================================
-       K O N F I G U R A C J A  F I R E B A S E  (poprawne, działające)
-       Baza działa w trybie publicznym (bez logowania).
+       K O N F I G U R A C J A  F I R E B A S E  (poprawne, dziaĹ‚ajÄ…ce)
+       Baza dziaĹ‚a w trybie publicznym (bez logowania).
        ============================================================ -->
   <script>
     const firebaseConfig = {
@@ -115,30 +115,30 @@
 
   <!-- ============================================================
        B A S E 1 2 2  E N C O D E R / D E C O D E R
-       Alfabet 122 znaków (podany przez użytkownika).
-       Overhead vs binarny ~15% (Base64 miał 33%).
-       Użyty do kompresji zdjęć (AVIF) i plików 3D w Firestore.
+       Alfabet 122 znakĂłw (podany przez uĹĽytkownika).
+       Overhead vs binarny ~15% (Base64 miaĹ‚ 33%).
+       UĹĽyty do kompresji zdjÄ™Ä‡ (AVIF) i plikĂłw 3D w Firestore.
        ============================================================ -->
   <script>
-    const BASE122_ALPHABET = '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~¡¢£¤¥§¨©ª«¬®¯°±²³µ¶·¸¹º»¼½¾¿ÀÁ';
+    const BASE122_ALPHABET = '!#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~ÂˇÂ˘ÂŁÂ¤ÂĄÂ§Â¨Â©ÂŞÂ«Â¬Â®ÂŻÂ°Â±Â˛ÂłÂµÂ¶Â·Â¸ÂąÂşÂ»ÂĽÂ˝ÂľÂżĂ€Ă';
     const BASE122_REV_MAP = {};
     for (let i = 0; i < BASE122_ALPHABET.length; i++) BASE122_REV_MAP[BASE122_ALPHABET[i]] = i;
-    const B122_LEN_CHARS = 4; // prefiks długości (do 122^4 ≈ 21M bajtów)
+    const B122_LEN_CHARS = 4; // prefiks dĹ‚ugoĹ›ci (do 122^4 â‰ 21M bajtĂłw)
 
-    // Nowy format: dane dzielone na chunki po CHUNK bajtów -> OUT znaków Base122.
-    // Tylko arytmetyka Number (bez wielkich BigInt) -> O(N), stała pamięć.
-    const B122_CHUNK = 5;   // 5 bajtów -> wartość < 2^40, *122 mieści się w safe integer
-    const B122_OUT = 6;     // 122^6 > 2^40, więc 6 znaków wystarczy
+    // Nowy format: dane dzielone na chunki po CHUNK bajtĂłw -> OUT znakĂłw Base122.
+    // Tylko arytmetyka Number (bez wielkich BigInt) -> O(N), staĹ‚a pamiÄ™Ä‡.
+    const B122_CHUNK = 5;   // 5 bajtĂłw -> wartoĹ›Ä‡ < 2^40, *122 mieĹ›ci siÄ™ w safe integer
+    const B122_OUT = 6;     // 122^6 > 2^40, wiÄ™c 6 znakĂłw wystarczy
 
     // Uint8Array -> Base122 (chunkowany, Number-only)
     function base122_encode(buf) {
       if (!buf || buf.length === 0) return '';
-      let len = BigInt(buf.length); // długość jest mała, BigInt tu jest bezpieczny
+      let len = BigInt(buf.length); // dĹ‚ugoĹ›Ä‡ jest maĹ‚a, BigInt tu jest bezpieczny
       let lenStr = '';
       for (let i = 0; i < B122_LEN_CHARS; i++) { lenStr = BASE122_ALPHABET[Number(len % 122n)] + lenStr; len = len / 122n; }
       let out = '';
       for (let i = 0; i < buf.length; i += B122_CHUNK) {
-        // pierwszy bajt chunku = najmniej znaczący (LSB-first), by decode + slice były spójne
+        // pierwszy bajt chunku = najmniej znaczÄ…cy (LSB-first), by decode + slice byĹ‚y spĂłjne
         let v = 0;
         for (let j = B122_CHUNK - 1; j >= 0; j--) v = v * 256 + (i + j < buf.length ? buf[i + j] : 0);
         const digs = [];
@@ -174,7 +174,7 @@
       return new Uint8Array(bytes.slice(0, lenNum));
     }
 
-    // Stary (legacy) dekoder monoliticzny — tylko jako fallback dla danych w Firestore.
+    // Stary (legacy) dekoder monoliticzny â€” tylko jako fallback dla danych w Firestore.
     function decodeMonolithic(str) {
       const lenStr = str.slice(0, B122_LEN_CHARS);
       const dataStr = str.slice(B122_LEN_CHARS);
@@ -223,24 +223,30 @@
       return 'image/png';
     }
 
-    // Base122 -> data: URL (do wyświetlania <img src>)
+    // Base122 -> data: URL (do wyĹ›wietlania <img src>)
     function base122ToImgDataURL(b122) {
       const bytes = base122_decode(b122);
       const mime = detectImageMime(bytes);
       let bin = '';
       for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      return 'data:' + mime + ';base64,' + btoa(bin);
+return 'data:' + mime + ';base64,' + btoa(bin);
     }
 
-    // Obsługuje stare data: URL (legacy) oraz nowy Base122
-    function imageSrcFor(val) {
-      if (!val) return '';
-      if (val.startsWith('data:')) return val;
-      try { return base122ToImgDataURL(val); } catch (e) { return ''; }
-    }
+    window.imgCache = new Map();
+
+// Obsługuje stare data: URL (legacy) oraz nowy Base122
+function imageSrcFor(val) {
+  if (!val) return '';
+  if (val.startsWith('data:')) return val;
+  if (window.imgCache.has(val)) return window.imgCache.get(val);
+  const result = base122ToImgDataURL(val);
+  if (window.imgCache.size >= 200) window.imgCache.delete(window.imgCache.keys().next().value);
+  window.imgCache.set(val, result);
+  return result;
+}
 
     // Base122 -> Uint8Array (do pobierania modeli 3D jako blob)
-    // Obsługuje też legacy data: URL (base64)
+    // ObsĹ‚uguje teĹĽ legacy data: URL (base64)
     function base122ToBinary(val) {
       if (!val) return new Uint8Array(0);
       if (val.startsWith('data:')) return dataUrlToBinaryBytes(val);
@@ -255,39 +261,39 @@
     'use strict';
 
     /* ------------------------------------------------------------------
-       STAŁE I POMOCNICZE FUNKCJE
+       STAĹE I POMOCNICZE FUNKCJE
        ------------------------------------------------------------------ */
 
-    // Kolejne etapy realizacji zamówienia (kolejność w stepperze)
-    const STATUSES = ['W kolejce', 'Drukuje się', 'W drodze', 'Doręczone'];
+    // Kolejne etapy realizacji zamĂłwienia (kolejnoĹ›Ä‡ w stepperze)
+    const STATUSES = ['W kolejce', 'Drukuje siÄ™', 'W drodze', 'DorÄ™czone'];
 
-    // Powody anulowania zamówienia (ochrona przed trollami)
+    // Powody anulowania zamĂłwienia (ochrona przed trollami)
     const CANCEL_REASONS = [
-      'Zamówienie trolowskie / Fałszywe',
-      'Brak materiału (Filamentu)',
-      'Błąd wydruku / Awaria drukarki',
-      'Inny powód'
+      'ZamĂłwienie trolowskie / FaĹ‚szywe',
+      'Brak materiaĹ‚u (Filamentu)',
+      'BĹ‚Ä…d wydruku / Awaria drukarki',
+      'Inny powĂłd'
     ];
 
-    // Jedyna dostępna opcja dostawy (odbiór w szkole)
-    const DELIVERY = 'Szkoła';
+    // Jedyna dostÄ™pna opcja dostawy (odbiĂłr w szkole)
+    const DELIVERY = 'SzkoĹ‚a';
 
-    // Limity: 1 zamówienie na 2 minuty oraz max 6 ofert na zamówienie (antyspam)
+    // Limity: 1 zamĂłwienie na 2 minuty oraz max 6 ofert na zamĂłwienie (antyspam)
     const ORDER_MIN_INTERVAL_MS = 2 * 60 * 1000;
     const ORDER_MAX_ITEMS = 6;
-    // Klucz localStorage z czasem ostatniego złożonego zamówienia
+    // Klucz localStorage z czasem ostatniego zĹ‚oĹĽonego zamĂłwienia
     const LAST_ORDER_KEY = 'maslo3d_last_order';
 
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
-    let settings = { pricePerGram: 0, mode: 'queue', banner: '', adminPasswordHash: '' }; // cena za gram (zł), tryb, komunikat, hash hasła
+    let settings = { pricePerGram: 0, mode: 'queue', banner: '', adminPasswordHash: '' }; // cena za gram (zĹ‚), tryb, komunikat, hash hasĹ‚a
     let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, createdAt}
     let orders = {};   // id -> {name, className, delivery, items, totalWeight, totalPrice, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
-    // Koszyk (productId -> ilość), zapisywany lokalnie
+    // Koszyk (productId -> iloĹ›Ä‡), zapisywany lokalnie
     let cart = {};
-    // Krok koszyka: 1=lista, 2=zamówienie, 3=kolejka
+    // Krok koszyka: 1=lista, 2=zamĂłwienie, 3=kolejka
     let cartStep = 1;
-    let lastOrderData = null; // dane ostatnio złożonego zamówienia (dla kroku 3)
+    let lastOrderData = null; // dane ostatnio zĹ‚oĹĽonego zamĂłwienia (dla kroku 3)
 
     // Klucz do przechowywania koszyka w localStorage
     const CART_KEY = 'maslo3d_cart';
@@ -299,14 +305,14 @@
       });
     }
 
-    /* --- Formatowanie pieniędzy: 5,00 zł --- */
+    /* --- Formatowanie pieniÄ™dzy: 5,00 zĹ‚ --- */
     function fmtPrice(p) {
-      return Number(p || 0).toFixed(2).replace('.', ',') + ' zł';
+      return Number(p || 0).toFixed(2).replace('.', ',') + ' zĹ‚';
     }
 
-    /* --- Formatowanie ceny za gram: 0,20 zł/gr --- */
+    /* --- Formatowanie ceny za gram: 0,20 zĹ‚/gr --- */
     function fmtPerGram(p) {
-      return Number(p || 0).toFixed(2).replace('.', ',') + ' zł/gr';
+      return Number(p || 0).toFixed(2).replace('.', ',') + ' zĹ‚/gr';
     }
 
     /* --- Formatowanie gramatury: 12 gr --- */
@@ -316,7 +322,7 @@
 
     /* --- Formatowanie daty (polskie, lokalne) --- */
     function fmtDate(ts) {
-      if (!ts) return '—';
+      if (!ts) return 'â€”';
       return new Date(ts).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' });
     }
 
@@ -332,23 +338,23 @@
       });
     }
 
-    /* --- Krótki wariant ID (8 znaków) --- */
+    /* --- KrĂłtki wariant ID (8 znakĂłw) --- */
     function shortId(id) {
       return String(id).slice(0, 8);
     }
 
-    /* --- Pełny link do strony / śledzenia --- */
+    /* --- PeĹ‚ny link do strony / Ĺ›ledzenia --- */
     function pageUrl() {
       return window.location.origin + window.location.pathname;
     }
-    // Link śledzenia na podstawie 3-cyfrowego kodu zamówienia
+    // Link Ĺ›ledzenia na podstawie 3-cyfrowego kodu zamĂłwienia
     function trackingLink(orderCode) {
       return pageUrl() + '?o=' + orderCode;
     }
 
-    /* --- Generowanie 3-cyfrowego kodu zamówienia (001-999).
-           Unikalny wśród AKTYWNYCH (nieusuniętych) zamówień;
-           anulowane/usunięte zwalniają swój numer. --- */
+    /* --- Generowanie 3-cyfrowego kodu zamĂłwienia (001-999).
+           Unikalny wĹ›rĂłd AKTYWNYCH (nieusuniÄ™tych) zamĂłwieĹ„;
+           anulowane/usuniÄ™te zwalniajÄ… swĂłj numer. --- */
     function genOrderCode() {
       const used = {};
       Object.values(orders).forEach(function (o) {
@@ -361,7 +367,7 @@
       return code;
     }
 
-    /* --- Antyspam: czy można złożyć kolejne zamówienie? --- */
+    /* --- Antyspam: czy moĹĽna zĹ‚oĹĽyÄ‡ kolejne zamĂłwienie? --- */
     function orderCooldownMs() {
       try {
         const last = parseInt(localStorage.getItem(LAST_ORDER_KEY), 10) || 0;
@@ -390,14 +396,14 @@
     function statusColor(status) {
       const map = {
         'W kolejce': 'text-amber-300 border-amber-400/30 bg-amber-400/10',
-        'Drukuje się': 'text-cyan-300 border-cyan-400/30 bg-cyan-400/10',
+        'Drukuje siÄ™': 'text-cyan-300 border-cyan-400/30 bg-cyan-400/10',
         'W drodze': 'text-violet-300 border-violet-400/30 bg-violet-400/10',
-        'Doręczone': 'text-emerald-300 border-emerald-400/30 bg-emerald-400/10'
+        'DorÄ™czone': 'text-emerald-300 border-emerald-400/30 bg-emerald-400/10'
       };
       return map[status] || 'text-slate-300 border-slate-400/30 bg-slate-400/10';
     }
 
-    /* --- Ładowanie / zapis koszyka --- */
+    /* --- Ĺadowanie / zapis koszyka --- */
     function loadCart() {
       try { cart = JSON.parse(localStorage.getItem(CART_KEY)) || {}; } catch (e) { cart = {}; }
     }
@@ -406,7 +412,7 @@
       updateCartBadge();
     }
 
-    /* --- Podsumowanie koszyka: ilość sztuk, cena --- */
+    /* --- Podsumowanie koszyka: iloĹ›Ä‡ sztuk, cena --- */
     function cartSummary() {
       var count = 0, price = 0;
       Object.keys(cart).forEach(function (id) {
@@ -419,7 +425,7 @@
       return { count: count, price: price };
     }
 
-    /* --- Cena produktu (czas druku x cena za sekundę) --- */
+    /* --- Cena produktu (czas druku x cena za sekundÄ™) --- */
     function productPrice(p) {
       return (p.printTimeSec || 0) * settings.pricePerGram;
     }
@@ -427,16 +433,16 @@
     /* --- Formatowanie czasu druku --- */
     /* --- Formatowanie czasu: mini (2:56) --- */
     function fmtTimeMini(sec) {
-      if (!sec && sec !== 0) return '—';
+      if (!sec && sec !== 0) return 'â€”';
       sec = Math.round(sec);
       var h = Math.floor(sec / 3600);
       var m = Math.floor((sec % 3600) / 60);
       return h + ':' + String(m).padStart(2, '0');
     }
 
-    /* --- Formatowanie czasu: krótki (2h 56m / 21m) --- */
+    /* --- Formatowanie czasu: krĂłtki (2h 56m / 21m) --- */
     function fmtTimeShort(sec) {
-      if (!sec && sec !== 0) return '—';
+      if (!sec && sec !== 0) return 'â€”';
       sec = Math.round(sec);
       var h = Math.floor(sec / 3600);
       var m = Math.floor((sec % 3600) / 60);
@@ -445,9 +451,9 @@
       return sec + 's';
     }
 
-    /* --- Formatowanie czasu: długi (2 godziny i 56 minut / 21 minut) --- */
+    /* --- Formatowanie czasu: dĹ‚ugi (2 godziny i 56 minut / 21 minut) --- */
     function fmtTimeLong(sec) {
-      if (!sec && sec !== 0) return '—';
+      if (!sec && sec !== 0) return 'â€”';
       sec = Math.round(sec);
       var h = Math.floor(sec / 3600);
       var m = Math.floor((sec % 3600) / 60);
@@ -464,7 +470,7 @@
       return sec + ' sekund';
     }
 
-    /* --- fmtTime = alias fmtTimeShort (kompatybilność) --- */
+    /* --- fmtTime = alias fmtTimeShort (kompatybilnoĹ›Ä‡) --- */
     function fmtTime(sec) { return fmtTimeShort(sec); }
 
     /* --- Odtwarzanie gwizdka (Web Audio) --- */
@@ -490,7 +496,7 @@
       } catch (e) {}
     }
 
-    /* --- Rozwijanie zestawów (bundles) w koszyku --- */
+    /* --- Rozwijanie zestawĂłw (bundles) w koszyku --- */
     function expandBundles(items) {
       var out = [];
       items.forEach(function (ci) {
@@ -509,7 +515,7 @@
       return out;
     }
 
-    /* --- Szacowany czas druku dla zamówienia --- */
+    /* --- Szacowany czas druku dla zamĂłwienia --- */
     function estPrintTime(items) {
       var total = 0;
       items.forEach(function (ci) {
@@ -526,7 +532,7 @@
       var queued = Object.keys(orders)
         .filter(function (id) {
           var o = orders[id];
-          return o && !o.isDeleted && (o.status === 'W kolejce' || o.status === 'Drukuje się');
+          return o && !o.isDeleted && (o.status === 'W kolejce' || o.status === 'Drukuje siÄ™');
         })
         .sort(function (a, b) {
           return (orders[a].createdAt || 0) - (orders[b].createdAt || 0);
@@ -537,14 +543,14 @@
     }
 
     /* --- Rysowanie kodu QR w danym kontenerze --- */
-    // Lazy-load biblioteki QR i renderowanie kodu (żadnego dodatkowego obciążenia przy starcie)
+    // Lazy-load biblioteki QR i renderowanie kodu (ĹĽadnego dodatkowego obciÄ…ĹĽenia przy starcie)
     function renderQR(containerId, text) {
       const el = document.getElementById(containerId);
       el.innerHTML = '';
       if (window.QRCode) {
         new QRCode(el, { text: text, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
       } else {
-        // Asynchronicznie wczytaj bibliotekę QR dopiero teraz
+        // Asynchronicznie wczytaj bibliotekÄ™ QR dopiero teraz
         const s = document.createElement('script');
         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
         s.onload = function () { renderQR(containerId, text); };
@@ -556,7 +562,7 @@
     }
 
     /* ------------------------------------------------------------------
-       ROUTER - wybór widoku na podstawie parametrów URL
+       ROUTER - wybĂłr widoku na podstawie parametrĂłw URL
        ------------------------------------------------------------------ */
     function route() {
       const params = new URLSearchParams(window.location.search);
@@ -565,7 +571,7 @@
       const productId = params.get('p');
       const isAdmin = params.get('admin') === 'true';
 
-      // Wyczyść tracking listener przy zmianie widoku
+      // WyczyĹ›Ä‡ tracking listener przy zmianie widoku
       if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
 
       document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
@@ -619,7 +625,7 @@
         scheduleRender();
       }, function (err) { console.error('Settings listener error:', err); });
 
-      // Produkty — incrementalne aktualizacje
+      // Produkty â€” incrementalne aktualizacje
       unsubProducts = db.collection('products').onSnapshot(function (snap) {
         snap.docChanges().forEach(function (change) {
           if (change.type === 'added' || change.type === 'modified') {
@@ -631,7 +637,7 @@
         scheduleRender();
       }, function (err) { console.error('Products listener error:', err); });
 
-      // Zamówienia — incrementalne + filtr isDeleted (bez orderBy — sortowanie w JS)
+      // ZamĂłwienia â€” incrementalne + filtr isDeleted (bez orderBy â€” sortowanie w JS)
       unsubOrders = db.collection('orders')
         .where('isDeleted', '==', false)
         .limit(500)
@@ -663,7 +669,7 @@
        ================================================================== */
 
     function renderShop() {
-      // Baner trybu kolejki / powiadomień
+      // Baner trybu kolejki / powiadomieĹ„
       const banner = document.getElementById('shop-banner');
       if (settings.banner) {
         banner.classList.remove('hidden');
@@ -674,11 +680,11 @@
         banner.classList.add('hidden');
       }
 
-      // Cena za gram (info w nagłówku sekcji ofert)
+      // Cena za gram (info w nagĹ‚Ăłwku sekcji ofert)
       const priceInfo = document.getElementById('price-per-gram-info');
       priceInfo.textContent = 'Cena: ' + fmtPerGram(settings.pricePerGram);
 
-      // Lista produktów
+      // Lista produktĂłw
       const grid = document.getElementById('shop-grid');
       const keys = Object.keys(products);
       grid.innerHTML = '';
@@ -687,7 +693,7 @@
         grid.innerHTML =
           '<div class="col-span-full text-center py-16 text-slate-400">' +
           '  <p class="text-lg">Brak ofert w sklepie.</p>' +
-          '  <p class="text-sm mt-1">Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.</p>' +
+          '  <p class="text-sm mt-1">Zajrzyj wkrĂłtce - nowe wydruki pojawiÄ… siÄ™ tutaj.</p>' +
           '</div>';
         return;
       }
@@ -722,7 +728,7 @@
             ? '<span class="text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1 font-bold uppercase">Brak w magazynie</span>'
             : (p.stock != null ? '<span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1">Stan: ' + p.stock + '</span>' : '')) +
           '  </div>' +
-          (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">Posłuchaj gwizdka (' + (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function(f){return f>=1000?(f/1000).toFixed(1)+'kHz':f+'Hz';}).join(' + ') : (p.whistleFreq >= 1000 ? (p.whistleFreq/1000).toFixed(1)+'kHz' : p.whistleFreq+'Hz')) + ')</button>' : '') +
+          (isWhistle ? '<button data-whistle="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-xs border border-sky-500/30 hover:bg-sky-500/30 transition">PosĹ‚uchaj gwizdka (' + (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function(f){return f>=1000?(f/1000).toFixed(1)+'kHz':f+'Hz';}).join(' + ') : (p.whistleFreq >= 1000 ? (p.whistleFreq/1000).toFixed(1)+'kHz' : p.whistleFreq+'Hz')) + ')</button>' : '') +
           (p.modelFile && p.modelFile.data ? '<button data-download-model="' + id + '" class="mt-2 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs border border-emerald-500/30 hover:bg-emerald-500/30 transition">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
           '  <button data-add-cart="' + id + '" ' + (outOfStock ? 'disabled' : '') + ' class="mt-4 w-full py-2.5 rounded-xl font-semibold text-base transition-all ' +
           (outOfStock ? 'bg-slate-600/50 text-slate-400 cursor-not-allowed' : 'bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20') + '">Dodaj do koszyka</button>' +
@@ -737,7 +743,7 @@
       var box = document.getElementById('product-detail-box');
       var p = products[productId];
       if (!p) {
-        box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent hover:text-sky-300 text-sm mt-4 inline-block">&larr; Wróć do sklepu</a></div>';
+        box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent hover:text-sky-300 text-sm mt-4 inline-block">&larr; WrĂłÄ‡ do sklepu</a></div>';
         return;
       }
 
@@ -774,12 +780,12 @@
           ? '      <span class="text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1 text-sm font-bold">Brak w magazynie</span>'
           : (p.stock != null ? '      <span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 text-sm">Stan: ' + p.stock + '</span>' : '')) +
         '    </div>' +
-        (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">Posłuchaj gwizdka (' + whistleLabel + ')</button>' : '') +
+        (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">PosĹ‚uchaj gwizdka (' + whistleLabel + ')</button>' : '') +
         (p.modelFile && p.modelFile.data ? '<button id="pd-download" data-download-model="' + productId + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
         (p.authorLink ? '<a href="' + esc(p.authorLink) + '" target="_blank" rel="noopener" class="mt-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-400 text-sm border border-violet-500/30 hover:bg-violet-500/30 transition w-fit inline-block text-center">Model autora &nearr;</a>' : '') +
         '    <div class="mt-6 pt-6 border-t border-white/10">' +
         (outOfStock
-          ? '      <p class="text-red-400 text-sm">Produkt chwilowo niedostępny.</p>'
+          ? '      <p class="text-red-400 text-sm">Produkt chwilowo niedostÄ™pny.</p>'
           : '      <button id="pd-add-cart" class="w-full py-3 rounded-xl font-bold text-base bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20 transition-all">Dodaj do koszyka</button>') +
         '    </div>' +
         '  </div>' +
@@ -816,7 +822,7 @@
       }
     }
 
-    // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
+    // HTML obrazka produktu (z fallbackiem, gdy brak zdjÄ™cia)
     function productImageHtml(p) {
       var img = imageSrcFor(p.imageUrl || p.image);
       if (img && img.length > 20) {
@@ -852,7 +858,7 @@
         renderCart(body);
         renderCartFooter(footer);
       } else if (cartStep === 2) {
-        header.innerHTML = '<button id="cart-back" class="text-slate-400 hover:text-white text-sm">&larr; Koszyk</button><h3 class="text-lg font-bold text-white">Złóż zamówienie</h3>';
+        header.innerHTML = '<button id="cart-back" class="text-slate-400 hover:text-white text-sm">&larr; Koszyk</button><h3 class="text-lg font-bold text-white">ZĹ‚ĂłĹĽ zamĂłwienie</h3>';
         renderCheckout(body);
         renderCheckoutFooter(footer);
         document.getElementById('cart-back').addEventListener('click', function () { cartStep = 1; renderCartStep(); });
@@ -866,7 +872,7 @@
     function renderCart(container) {
       var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
       if (ids.length === 0) {
-        container.innerHTML = '<p class="text-center text-slate-500 py-8">Twój koszyk jest pusty.</p>';
+        container.innerHTML = '<p class="text-center text-slate-500 py-8">TwĂłj koszyk jest pusty.</p>';
         return;
       }
       var html = '';
@@ -890,7 +896,7 @@
           '</div>' +
           '<div class="w-16 text-right">' +
           '  <p class="text-white font-semibold text-sm">' + fmtPrice(productPrice(p) * qty) + '</p>' +
-          '  <button data-cart-del="' + id + '" class="text-xs text-red-400 hover:text-red-300">Usuń</button>' +
+          '  <button data-cart-del="' + id + '" class="text-xs text-red-400 hover:text-red-300">UsuĹ„</button>' +
           '</div></div>';
       });
       container.innerHTML = html;
@@ -921,34 +927,34 @@
     function renderCheckout(container) {
       var s = cartSummary();
       var modeNote = settings.mode === 'queue'
-        ? 'Tryb zbierania kolejki — zamówienie poczeka na realizację.'
-        : 'Zamówienie trafi do druku.';
+        ? 'Tryb zbierania kolejki â€” zamĂłwienie poczeka na realizacjÄ™.'
+        : 'ZamĂłwienie trafi do druku.';
 
       container.innerHTML =
         '<div class="space-y-4">' +
         '  <div class="bg-base/60 border border-white/10 rounded-xl p-4 text-sm">' +
-        '    <div class="flex justify-between"><span class="text-slate-400">Płatność</span><span class="text-white font-medium">Brak (przy odbiorze)</span></div>' +
+        '    <div class="flex justify-between"><span class="text-slate-400">PĹ‚atnoĹ›Ä‡</span><span class="text-white font-medium">Brak (przy odbiorze)</span></div>' +
         '  </div>' +
         '  <div>' +
         '    <label class="block text-sm text-slate-400 mb-1">Dostawa</label>' +
         '    <div class="flex gap-2">' +
-        '      <span class="bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm flex-shrink-0">Szkoła</span>' +
+        '      <span class="bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm flex-shrink-0">SzkoĹ‚a</span>' +
         '      <input id="checkout-delivery-detail" type="text"' +
         '        class="flex-1 bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none text-sm" />' +
         '    </div>' +
         '  </div>' +
         '  <div>' +
-        '    <label class="block text-sm text-slate-400 mb-1">Imię *</label>' +
+        '    <label class="block text-sm text-slate-400 mb-1">ImiÄ™ *</label>' +
         '    <input id="checkout-name" type="text" required' +
         '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
         '  </div>' +
         '  <div>' +
-        '    <label class="block text-sm text-slate-400 mb-1">Inicjał nazwiska (opcjonalnie)</label>' +
+        '    <label class="block text-sm text-slate-400 mb-1">InicjaĹ‚ nazwiska (opcjonalnie)</label>' +
         '    <input id="checkout-initial" type="text" maxlength="1"' +
         '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
         '  </div>' +
         '  <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">' +
-        '    <p><strong>Podawanie imienia i inicjału jest potrzebne TYLKO do procesu dostawy.</strong></p>' +
+        '    <p><strong>Podawanie imienia i inicjaĹ‚u jest potrzebne TYLKO do procesu dostawy.</strong></p>' +
         '  </div>' +
         '  <p class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2">' + esc(modeNote) + '</p>' +
         '  <div id="checkout-message"></div>' +
@@ -958,13 +964,13 @@
     function renderCheckoutFooter(container) {
       container.innerHTML =
         '<button id="cart-submit-order"' +
-        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Wejdź do kolejki</button>';
+        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">WejdĹş do kolejki</button>';
       document.getElementById('cart-submit-order').addEventListener('click', handleCheckout);
     }
 
     function renderQueue(container) {
       if (!lastOrderData) {
-        container.innerHTML = '<p class="text-center text-slate-500 py-8">Brak danych zamówienia.</p>';
+        container.innerHTML = '<p class="text-center text-slate-500 py-8">Brak danych zamĂłwienia.</p>';
         return;
       }
       var o = lastOrderData;
@@ -977,19 +983,19 @@
         '      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />' +
         '    </svg>' +
         '  </div>' +
-        '  <h3 class="text-xl font-bold text-white">Zamówienie #' + esc(o.orderCode) + '</h3>' +
-        '  <p class="text-slate-400 mt-1">Dziękujemy, ' + esc(o.name) + '!</p>' +
+        '  <h3 class="text-xl font-bold text-white">ZamĂłwienie #' + esc(o.orderCode) + '</h3>' +
+        '  <p class="text-slate-400 mt-1">DziÄ™kujemy, ' + esc(o.name) + '!</p>' +
         '  <div class="mt-6 space-y-3">' +
         '    <div class="bg-base/60 border border-white/10 rounded-xl p-4">' +
-        '      <p class="text-sm text-slate-400">Jesteś <span class="text-white font-bold">' + q.position + '.</span> w kolejce</p>' +
-        '      <p class="text-sm text-slate-400">(' + q.total + ' osób w kolejce)</p>' +
+        '      <p class="text-sm text-slate-400">JesteĹ› <span class="text-white font-bold">' + q.position + '.</span> w kolejce</p>' +
+        '      <p class="text-sm text-slate-400">(' + q.total + ' osĂłb w kolejce)</p>' +
         '    </div>' +
         '    <div class="bg-base/60 border border-white/10 rounded-xl p-4">' +
         '      <p class="text-xs text-slate-500 mb-1">Szacowany czas dostawy</p>' +
         '      <p class="text-white font-medium">' + esc(q.estimate) + '</p>' +
         '    </div>' +
         '  </div>' +
-        '  <a href="' + esc(link) + '" class="mt-5 inline-block text-accent hover:text-sky-300 font-semibold text-sm">Śledź zamówienie &rarr;</a>' +
+        '  <a href="' + esc(link) + '" class="mt-5 inline-block text-accent hover:text-sky-300 font-semibold text-sm">ĹšledĹş zamĂłwienie &rarr;</a>' +
         '</div>';
     }
 
@@ -1000,7 +1006,7 @@
       document.getElementById('cart-close-queue').addEventListener('click', closeCart);
     }
 
-    // Złożenie zamówienia (koszyk -> Firebase)
+    // ZĹ‚oĹĽenie zamĂłwienia (koszyk -> Firebase)
     function handleCheckout(e) {
       if (e) e.preventDefault();
       var name = document.getElementById('checkout-name').value.trim();
@@ -1008,7 +1014,7 @@
       var deliveryDetail = (document.getElementById('checkout-delivery-detail').value || '').trim();
       var msg = document.getElementById('checkout-message');
 
-      if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj imię.</p>'; return; }
+      if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj imiÄ™.</p>'; return; }
 
       var displayName = initial ? name + ' ' + initial + '.' : name;
 
@@ -1018,13 +1024,13 @@
       var cooldown = orderCooldownMs();
       if (cooldown > 0) {
         var sec = Math.ceil(cooldown / 1000);
-        msg.innerHTML = '<p class="text-amber-300 text-sm">Odczekaj jeszcze ' + sec + ' s przed złożeniem kolejnego zamówienia.</p>';
+        msg.innerHTML = '<p class="text-amber-300 text-sm">Odczekaj jeszcze ' + sec + ' s przed zĹ‚oĹĽeniem kolejnego zamĂłwienia.</p>';
         return;
       }
 
       var distinctCount = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; }).length;
       if (distinctCount > ORDER_MAX_ITEMS) {
-        msg.innerHTML = '<p class="text-red-300 text-sm">Maksymalnie ' + ORDER_MAX_ITEMS + ' różnych ofert w jednym zamówieniu.</p>';
+        msg.innerHTML = '<p class="text-red-300 text-sm">Maksymalnie ' + ORDER_MAX_ITEMS + ' rĂłĹĽnych ofert w jednym zamĂłwieniu.</p>';
         return;
       }
 
@@ -1052,8 +1058,8 @@
       });
 
       var estPrintSec = estPrintTime(expanded);
-      var delivery = 'Szkoła';
-      if (deliveryDetail) delivery += ' — ' + deliveryDetail;
+      var delivery = 'SzkoĹ‚a';
+      if (deliveryDetail) delivery += ' â€” ' + deliveryDetail;
 
       var order = {
         name: displayName,
@@ -1072,7 +1078,7 @@
         deleteReason: ''
       };
 
-      msg.innerHTML = '<p class="text-slate-400 text-sm">Wysyłanie...</p>';
+      msg.innerHTML = '<p class="text-slate-400 text-sm">WysyĹ‚anie...</p>';
       var submitBtn = document.getElementById('cart-submit-order');
       if (submitBtn) submitBtn.disabled = true;
 
@@ -1097,12 +1103,12 @@
           renderCartStep();
         })
         .catch(function (err) {
-          msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
+          msg.innerHTML = '<p class="text-red-300 text-sm">BĹ‚Ä…d zapisu: ' + esc(err.message) + '</p>';
           if (submitBtn) submitBtn.disabled = false;
         });
     }
 
-    /* --- Modal udostępniania (QR strony) --- */
+    /* --- Modal udostÄ™pniania (QR strony) --- */
     function openShareModal() {
       renderQR('share-qr', pageUrl());
       document.getElementById('share-url').value = pageUrl();
@@ -1112,7 +1118,7 @@
       document.getElementById('share-modal').classList.add('hidden');
     }
 
-    /* --- Modal "Śledź paczkę" (wpisz numer zamówienia) --- */
+    /* --- Modal "ĹšledĹş paczkÄ™" (wpisz numer zamĂłwienia) --- */
     function openTrackLookup() {
       const form = document.getElementById('track-lookup-form');
       if (form) form.reset();
@@ -1128,19 +1134,19 @@
       const err = document.getElementById('track-lookup-error');
       err.textContent = '';
       let code = document.getElementById('track-lookup-code').value.trim();
-      // Normalizacja: dokładnie 3 cyfry
+      // Normalizacja: dokĹ‚adnie 3 cyfry
       code = code.replace(/\D/g, '').slice(0, 3);
       if (code.length !== 3) {
-        err.textContent = 'Podaj 3-cyfrowy numer zamówienia.';
+        err.textContent = 'Podaj 3-cyfrowy numer zamĂłwienia.';
         return;
       }
       closeTrackLookup();
-      // Przekierowanie na ekran śledzenia (?o=KOD)
+      // Przekierowanie na ekran Ĺ›ledzenia (?o=KOD)
       window.location.search = '?o=' + code;
     }
 
     /* ==================================================================
-       W I D O K   2:  ŚLEDZENIE ZAMÓWIENIA
+       W I D O K   2:  ĹšLEDZENIE ZAMĂ“WIENIA
        Parametr ?o=KOD (3 cyfry) lub fallback ?orderId=UUID
        ================================================================== */
 
@@ -1148,7 +1154,7 @@
     let trackingKey = null;
     let trackingUnsub = null;
 
-    // Rozwiązuje klucz (kod lub UUID) na identyfikator zamówienia; null, gdy jeszcze nieznany
+    // RozwiÄ…zuje klucz (kod lub UUID) na identyfikator zamĂłwienia; null, gdy jeszcze nieznany
     function resolveTrackingKey(key) {
       if (key.indexOf('o:') === 0) {
         const code = key.slice(2);
@@ -1187,13 +1193,13 @@
         box.innerHTML =
           '<div class="text-center max-w-md mx-auto">' +
           '  <div class="mx-auto w-12 h-12 rounded-full border-2 border-accent/30 border-t-accent animate-spin mb-4"></div>' +
-          '  <h2 class="text-xl font-bold text-white">Szukam zamówienia...</h2>' +
+          '  <h2 class="text-xl font-bold text-white">Szukam zamĂłwienia...</h2>' +
           '  <p class="text-slate-400 mt-2 text-sm">Sprawdzam numer w systemie.</p>' +
           '</div>';
         return;
       }
 
-      // Zamówienie anulowane lub usunięte
+      // ZamĂłwienie anulowane lub usuniÄ™te
       if (!order || order.isDeleted) {
         const reason = order && order.deleteReason ? order.deleteReason : '';
         box.innerHTML =
@@ -1203,9 +1209,9 @@
           '      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />' +
           '    </svg>' +
           '  </div>' +
-          '  <h2 class="text-xl font-bold text-white">Zamówienie nie istnieje lub zostało anulowane przez administratora</h2>' +
-          (reason ? '<p class="mt-3 text-sm text-slate-400 bg-red-400/10 border border-red-400/30 rounded-xl px-4 py-3">Powód anulowania: <span class="text-red-300 font-semibold">' + esc(reason) + '</span></p>' : '') +
-          '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+          '  <h2 class="text-xl font-bold text-white">ZamĂłwienie nie istnieje lub zostaĹ‚o anulowane przez administratora</h2>' +
+          (reason ? '<p class="mt-3 text-sm text-slate-400 bg-red-400/10 border border-red-400/30 rounded-xl px-4 py-3">PowĂłd anulowania: <span class="text-red-300 font-semibold">' + esc(reason) + '</span></p>' : '') +
+          '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">WrĂłÄ‡ do sklepu</a>' +
           '</div>';
         return;
       }
@@ -1237,7 +1243,7 @@
           '</div>';
       });
 
-      // Lista zamówionych przedmiotów
+      // Lista zamĂłwionych przedmiotĂłw
       let itemsHtml = '';
       (order.items || []).forEach(function (it) {
         itemsHtml +=
@@ -1250,7 +1256,7 @@
       box.innerHTML =
         '<div class="max-w-lg mx-auto">' +
         '  <div class="text-center mb-6">' +
-        '    <h2 class="text-2xl font-bold text-white">Status zamówienia</h2>' +
+        '    <h2 class="text-2xl font-bold text-white">Status zamĂłwienia</h2>' +
         '    <p class="text-slate-400 mt-1">ID: ' + esc(shortId(orderId)) + '</p>' +
         '  </div>' +
         '  <div class="bg-panel border border-white/10 rounded-2xl p-5 mb-5">' +
@@ -1263,18 +1269,18 @@
         '    </div>' +
         '    <div class="mt-3 border-t border-white/10 pt-3 text-sm">' +
         itemsHtml +
-        '      <div class="flex justify-between py-1"><span class="text-slate-400">Dostawa</span><span class="text-white">' + esc(order.delivery || 'Szkoła') + '</span></div>' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">Dostawa</span><span class="text-white">' + esc(order.delivery || 'SzkoĹ‚a') + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Szacowany czas druku</span><span class="text-white">' + fmtTimeLong(order.estPrintSec) + '</span></div>' +
-        '      <div class="flex justify-between py-1"><span class="text-slate-400">Płatność</span><span class="text-white">' + esc(order.payment || 'Brak (przy odbiorze)') + '</span></div>' +
+        '      <div class="flex justify-between py-1"><span class="text-slate-400">PĹ‚atnoĹ›Ä‡</span><span class="text-white">' + esc(order.payment || 'Brak (przy odbiorze)') + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Razem</span><span class="text-white font-bold">' + fmtPrice(order.totalPrice) + '</span></div>' +
         '    </div>' +
         '  </div>' +
         '  <div class="bg-panel border border-white/10 rounded-2xl p-5">' +
-        '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-4">Postęp realizacji</p>' +
+        '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-4">PostÄ™p realizacji</p>' +
         '    <div class="flex">' + stepsHtml + '</div>' +
         '  </div>' +
         '  <div class="text-center mt-6">' +
-        '    <a href="' + pageUrl() + '" class="inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+        '    <a href="' + pageUrl() + '" class="inline-block text-accent hover:text-sky-300 font-semibold">WrĂłÄ‡ do sklepu</a>' +
         '  </div>' +
         '</div>';
     }
@@ -1307,9 +1313,9 @@
       Object.values(orders).forEach(function (o) {
         if (!o || o.isDeleted) return;
         total++;
-        if (o.status === 'Drukuje się') printing++;
+        if (o.status === 'Drukuje siÄ™') printing++;
         if (o.status === 'W kolejce') queued++;
-        if (o.status === 'Doręczone') {
+        if (o.status === 'DorÄ™czone') {
           deliveredQty += (o.estPrintSec || 0);
           revenue += (o.totalPrice || 0);
         }
@@ -1322,7 +1328,7 @@
       document.getElementById('stat-revenue').textContent = fmtPrice(revenue);
     }
 
-    // Wykres: liczba zamówień i waga (gramy) na ostatnie 7 dni (D7)
+    // Wykres: liczba zamĂłwieĹ„ i waga (gramy) na ostatnie 7 dni (D7)
     function renderChart() {
       const ordersByDay = {};
       const gramsByDay = {};
@@ -1353,7 +1359,7 @@
       const wrap = document.getElementById('chart-bars');
       if (!wrap) return;
 
-      // Wykres liczby zamówień
+      // Wykres liczby zamĂłwieĹ„
       let html = '';
       labels.forEach(function (lbl, i) {
         const key = Object.keys(ordersByDay)[i];
@@ -1396,7 +1402,7 @@
       var pending = [];
       Object.keys(orders).forEach(function (id) {
         var o = orders[id];
-        if (o && !o.isDeleted && (o.status === 'W kolejce' || o.status === 'Drukuje się')) {
+        if (o && !o.isDeleted && (o.status === 'W kolejce' || o.status === 'Drukuje siÄ™')) {
           pending.push({ id: id, o: o });
         }
       });
@@ -1417,8 +1423,8 @@
           '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + ' | ' + fmtPrice(o.totalPrice) + '</p>' +
           '</div>' +
           '<div class="flex gap-1">' +
-          (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition">Drukuj</button>' : '') +
-          (o.status === 'Drukuje się' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Doręczone\')" class="text-xs px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition">Gotowe</button>' : '') +
+          (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje siÄ™\')" class="text-xs px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition">Drukuj</button>' : '') +
+          (o.status === 'Drukuje siÄ™' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'DorÄ™czone\')" class="text-xs px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition">Gotowe</button>' : '') +
           '</div></div>';
       }).join('');
     }
@@ -1426,17 +1432,17 @@
     function setOrderStatus(id, status) {
       db.collection('orders').doc(id).update({ status: status })
         .then(function () { flash('Status: ' + status); })
-        .catch(function (e) { alert('Błąd: ' + e.message); });
+        .catch(function (e) { alert('BĹ‚Ä…d: ' + e.message); });
     }
 
-    /* --- Zarządzanie produktami --- */
+    /* --- ZarzÄ…dzanie produktami --- */
     function renderAdminProducts() {
       const list = document.getElementById('admin-products');
       const keys = Object.keys(products);
       list.innerHTML = '';
 
       if (keys.length === 0) {
-        list.innerHTML = '<p class="text-slate-500 text-sm">Brak produktów. Dodaj pierwszą ofertę poniżej.</p>';
+        list.innerHTML = '<p class="text-slate-500 text-sm">Brak produktĂłw. Dodaj pierwszÄ… ofertÄ™ poniĹĽej.</p>';
         return;
       }
 
@@ -1466,7 +1472,7 @@
             ? '  <button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1" title="' + esc(p.modelFile.name) + '">Plik 3D</button>'
             : '') +
           '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-sm px-2 py-1">Edytuj</button>' +
-          '  <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Usuń</button>' +
+          '  <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">UsuĹ„</button>' +
           '</div>';
 
         list.appendChild(row);
@@ -1477,20 +1483,20 @@
           const id = btn.dataset.saveStock;
           const input = list.querySelector('[data-stock-id="' + id + '"]');
           const val = parseInt(input.value, 10);
-          if (isNaN(val) || val < 0) { alert('Podaj poprawny stan (0 lub więcej).'); return; }
+          if (isNaN(val) || val < 0) { alert('Podaj poprawny stan (0 lub wiÄ™cej).'); return; }
           db.collection('products').doc(id).update({ stock: val })
             .then(function () { flash('Stan magazynowy zaktualizowany.'); })
-            .catch(function (e) { alert('Błąd: ' + e.message); });
+            .catch(function (e) { alert('BĹ‚Ä…d: ' + e.message); });
         });
       });
 
       list.querySelectorAll('[data-del-product]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           const id = btn.dataset.delProduct;
-          if (confirm('Na pewno usunąć ten produkt?')) {
+          if (confirm('Na pewno usunÄ…Ä‡ ten produkt?')) {
             db.collection('products').doc(id).delete()
-              .then(function () { flash('Produkt usunięty.'); })
-              .catch(function (e) { alert('Błąd: ' + e.message); });
+              .then(function () { flash('Produkt usuniÄ™ty.'); })
+              .catch(function (e) { alert('BĹ‚Ä…d: ' + e.message); });
           }
         });
       });
@@ -1552,33 +1558,33 @@
         document.getElementById('product-model-data').value = b122;
         var kb = (b122.length * 8 / 7) / 1024;
         info.textContent = file.name + ' (' + kb.toFixed(1) + ' KB - Base122)';
-        // Pokaż przycisk odświeżania miniaturki + kontrolki obrotu XYZ
+        // PokaĹĽ przycisk odĹ›wieĹĽania miniaturki + kontrolki obrotu XYZ
         var rb = document.getElementById('refresh-thumb-btn');
         if (rb) rb.classList.remove('hidden');
         var rotc = document.getElementById('rot-controls');
         if (rotc) rotc.classList.remove('hidden');
-        // Auto-generuj miniaturkę z modelu 3D (tło + obrót XYZ)
+        // Auto-generuj miniaturkÄ™ z modelu 3D (tĹ‚o + obrĂłt XYZ)
         if (window.generateModelThumbnail) {
           window.generateModelThumbnail(binary, ext).catch(function (err) {
             console.error('Miniaturka nieudana:', err);
             var i2 = document.getElementById('product-image-info');
-            i2.textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+            i2.textContent = 'BĹ‚Ä…d generowania miniaturki: ' + (err && err.message ? err.message : err);
             i2.classList.add('text-amber-400');
             i2.classList.remove('text-slate-500');
           });
         }
       };
-      reader.onerror = function () { alert('Nie można odczytać pliku.'); info.textContent = ''; };
+      reader.onerror = function () { alert('Nie moĹĽna odczytaÄ‡ pliku.'); info.textContent = ''; };
       reader.readAsDataURL(file);
     }
 
-    /* --- Bundle UI (zarządzanie pozycjami zestawu) --- */
+    /* --- Bundle UI (zarzÄ…dzanie pozycjami zestawu) --- */
     let bundleItems = []; // [{productId, qty}]
 
     function populateBundleDropdown() {
       var sel = document.getElementById('bundle-add-product');
       if (!sel) return;
-      sel.innerHTML = '<option value="">— wybierz produkt —</option>';
+      sel.innerHTML = '<option value="">â€” wybierz produkt â€”</option>';
       Object.keys(products).forEach(function (id) {
         var p = products[id];
         if (!p || p.isDeleted) return;
@@ -1594,7 +1600,7 @@
       if (!container) return;
       container.innerHTML = '';
       if (bundleItems.length === 0) {
-        container.innerHTML = '<p class="text-xs text-slate-500 italic">Brak pozycji. Dodaj produkt poniżej.</p>';
+        container.innerHTML = '<p class="text-xs text-slate-500 italic">Brak pozycji. Dodaj produkt poniĹĽej.</p>';
         return;
       }
       bundleItems.forEach(function (item, idx) {
@@ -1687,7 +1693,7 @@
       if (p.modelFile && p.modelFile.data) {
         modelDataInput.value = p.modelFile.data;
         var modelKb = (p.modelFile.data.length * 8 / 7) / 1024;
-        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB - Base122) — obecny plik (możesz wczytać nowy).';
+        modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB - Base122) â€” obecny plik (moĹĽesz wczytaÄ‡ nowy).';
         var rb2 = document.getElementById('refresh-thumb-btn');
         if (rb2) rb2.classList.remove('hidden');
       } else {
@@ -1695,7 +1701,7 @@
         modelInfo.textContent = '';
       }
       document.getElementById('admin-form-title').textContent = 'Edytuj produkt';
-      document.getElementById('admin-form-reset').textContent = 'Anuluj edycję';
+      document.getElementById('admin-form-reset').textContent = 'Anuluj edycjÄ™';
       document.getElementById('admin-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
@@ -1717,14 +1723,14 @@
       const modelFileName = modelInput.files[0] ? modelInput.files[0].name : '';
       let bundle = null;
       if (document.getElementById('product-bundle').checked) {
-        if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
+        if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano ĹĽadnych pozycji.'); return; }
         bundle = { items: bundleItems.slice() };
       }
       const authorLink = document.getElementById('product-author-link').value.trim() || '';
 
-      if (!name) { alert('Podaj nazwę produktu.'); return; }
-      if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) — jest wymagany (z niego powstaje miniaturka).'); return; }
-      if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
+      if (!name) { alert('Podaj nazwÄ™ produktu.'); return; }
+      if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) â€” jest wymagany (z niego powstaje miniaturka).'); return; }
+      if (!editingProductId && !imageDataUrl) { alert('Miniaturka siÄ™ jeszcze generuje â€” poczekaj chwilÄ™ i zapisz ponownie.'); return; }
 
       var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
 
@@ -1737,7 +1743,7 @@
         }
         db.collection('products').doc(editingProductId).update(docData)
           .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
-          .catch(function (err) { alert('Błąd: ' + err.message); });
+          .catch(function (err) { alert('BĹ‚Ä…d: ' + err.message); });
       } else {
         docData.image = imageDataUrl || '';
         if (modelDataUrl) {
@@ -1746,7 +1752,7 @@
         docData.createdAt = Date.now();
         db.collection('products').doc(genUUID()).set(docData)
           .then(function () { flash('Produkt dodany.'); resetProductForm(); })
-          .catch(function (err) { alert('Błąd: ' + err.message); });
+          .catch(function (err) { alert('BĹ‚Ä…d: ' + err.message); });
       }
     }
 
@@ -1766,23 +1772,23 @@
       document.getElementById('product-model-info').textContent = '';
       resetBundleUI();
       document.getElementById('admin-form-title').textContent = 'Dodaj nowy produkt';
-      document.getElementById('admin-form-reset').textContent = 'Wyczyść';
+      document.getElementById('admin-form-reset').textContent = 'WyczyĹ›Ä‡';
     }
 
-    /* --- Zapis ustawień --- */
+    /* --- Zapis ustawieĹ„ --- */
     function handleSettingsSubmit(e) {
       e.preventDefault();
       const pricePerGram = parseFloat(document.getElementById('set-price').value);
       const banner = document.getElementById('set-banner').value.trim();
       const mode = document.getElementById('set-mode').value;
-      if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawną cenę za gram (0 lub więcej).'); return; }
+      if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawnÄ… cenÄ™ za gram (0 lub wiÄ™cej).'); return; }
 
       db.collection('settings').doc('main').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, adminPasswordHash: settings.adminPasswordHash || '' })
         .then(function () { flash('Ustawienia zapisane.'); })
-        .catch(function (e) { alert('Błąd: ' + e.message); });
+        .catch(function (e) { alert('BĹ‚Ä…d: ' + e.message); });
     }
 
-    /* --- Tabela zamówień --- */
+    /* --- Tabela zamĂłwieĹ„ --- */
     function renderAdminOrders() {
       const tbody = document.getElementById('orders-tbody');
       const keys = Object.keys(orders);
@@ -1800,7 +1806,7 @@
       });
 
       if (active.length === 0) {
-        tbody.innerHTML += '<tr><td colspan="9" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
+        tbody.innerHTML += '<tr><td colspan="9" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamĂłwieĹ„.</td></tr>';
       } else {
         active.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
       }
@@ -1808,7 +1814,7 @@
       if (archived.length > 0) {
         tbody.innerHTML +=
           '<tr class="border-t border-white/10"><td colspan="9" class="pt-6 pb-2">' +
-          '  <p class="text-xs uppercase tracking-wide text-slate-500 font-bold">Archiwum (anulowane / usunięte)</p>' +
+          '  <p class="text-xs uppercase tracking-wide text-slate-500 font-bold">Archiwum (anulowane / usuniÄ™te)</p>' +
           '</td></tr>';
         archived.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, true)); });
       }
@@ -1822,11 +1828,11 @@
         return '<option value="' + s + '"' + (o.status === s ? ' selected' : '') + '>' + s + '</option>';
       }).join('');
 
-      // Podsumowanie przedmiotów w kolumnie Produkt
+      // Podsumowanie przedmiotĂłw w kolumnie Produkt
       let itemsText = (o.items || []).map(function (it) {
         return esc(it.productName) + ' x' + it.qty;
       }).join(', ');
-      if (!itemsText) itemsText = '—';
+      if (!itemsText) itemsText = 'â€”';
 
       const timeCol = o.estPrintSec ? fmtTime(o.estPrintSec) : fmtGrams(o.totalWeight);
 
@@ -1847,16 +1853,16 @@
         '</td>' +
         '<td class="py-3 px-3">' +
         (isArchived
-          ? '<span class="text-xs text-slate-500">' + esc(o.deliveryEstimate || '—') + '</span>'
+          ? '<span class="text-xs text-slate-500">' + esc(o.deliveryEstimate || 'â€”') + '</span>'
           : '<input data-estimate-id="' + id + '" type="text" value="' + esc(o.deliveryEstimate || '') + '" placeholder="np. jutro 14:00" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white w-32 focus:border-accent focus:outline-none" />') +
         '</td>' +
         '<td class="py-3 px-3">' +
-        '  <button data-copy-link="' + id + '" title="Kopiuj link śledzenia" class="text-accent hover:text-sky-300 text-sm px-2 py-1">Kopiuj link</button>' +
+        '  <button data-copy-link="' + id + '" title="Kopiuj link Ĺ›ledzenia" class="text-accent hover:text-sky-300 text-sm px-2 py-1">Kopiuj link</button>' +
         '</td>' +
         '<td class="py-3 px-3">' +
         (isArchived
-          ? '<span class="text-xs text-slate-600">—</span>'
-          : '<button data-cancel="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Anuluj i usuń</button>') +
+          ? '<span class="text-xs text-slate-600">â€”</span>'
+          : '<button data-cancel="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Anuluj i usuĹ„</button>') +
         '</td>';
 
       return tr;
@@ -1894,8 +1900,8 @@
         deleteReason: reason,
         status: 'Anulowane'
       })
-        .then(function () { flash('Zamówienie anulowane.'); closeCancelModal(); })
-        .catch(function (e) { alert('Błąd: ' + e.message); });
+        .then(function () { flash('ZamĂłwienie anulowane.'); closeCancelModal(); })
+        .catch(function (e) { alert('BĹ‚Ä…d: ' + e.message); });
     }
 
     /* --- Toast --- */
@@ -1911,16 +1917,16 @@
     }
 
     /* ------------------------------------------------------------------
-       LOGOWANIE DO PANELU ADMINISTRATORA (hasło porównywane z hashem w bazie)
+       LOGOWANIE DO PANELU ADMINISTRATORA (hasĹ‚o porĂłwnywane z hashem w bazie)
        ------------------------------------------------------------------ */
     const ADMIN_AUTH_KEY = 'maslo3d_admin_auth';
 
-    // Czy sesja admina jest zalogowana (zachowane na czas przeglądarki)
+    // Czy sesja admina jest zalogowana (zachowane na czas przeglÄ…darki)
     function isAdminAuthed() {
       try { return sessionStorage.getItem(ADMIN_AUTH_KEY) === '1'; } catch (e) { return false; }
     }
 
-    // Hashowanie SHA-256 (Web Crypto) - hasło nigdy nie trafia do kodu w postaci jawnej
+    // Hashowanie SHA-256 (Web Crypto) - hasĹ‚o nigdy nie trafia do kodu w postaci jawnej
     async function sha256(text) {
       const data = new TextEncoder().encode(text);
       const buf = await crypto.subtle.digest('SHA-256', data);
@@ -1929,7 +1935,7 @@
       }).join('');
     }
 
-    // Logowanie: porównaj hash wpisanego hasła z hashem zapisanym w ustawieniach bazy
+    // Logowanie: porĂłwnaj hash wpisanego hasĹ‚a z hashem zapisanym w ustawieniach bazy
     async function handleAdminLogin(e) {
       e.preventDefault();
       const err = document.getElementById('admin-login-error');
@@ -1942,12 +1948,12 @@
         const passConfirm = document.getElementById('admin-pass-confirm');
         if (confirmGroup.classList.contains('hidden')) {
           confirmGroup.classList.remove('hidden');
-          err.textContent = 'Ustaw hasło do panelu. Podaj je dwukrotnie.';
+          err.textContent = 'Ustaw hasĹ‚o do panelu. Podaj je dwukrotnie.';
           return;
         }
         const pass2 = passConfirm.value;
-        if (!pass) { err.textContent = 'Podaj hasło.'; return; }
-        if (pass !== pass2) { err.textContent = 'Hasła nie są identyczne.'; return; }
+        if (!pass) { err.textContent = 'Podaj hasĹ‚o.'; return; }
+        if (pass !== pass2) { err.textContent = 'HasĹ‚a nie sÄ… identyczne.'; return; }
         err.textContent = '';
         btn.disabled = true;
         try {
@@ -1955,10 +1961,10 @@
           await db.collection('settings').doc('main').set({ adminPasswordHash: hash }, { merge: true });
           settings.adminPasswordHash = hash;
           sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
-          flash('Hasło ustawione. Zalogowano.');
+          flash('HasĹ‚o ustawione. Zalogowano.');
           route();
         } catch (ex) {
-          err.textContent = 'Błąd zapisu: ' + ex.message;
+          err.textContent = 'BĹ‚Ä…d zapisu: ' + ex.message;
         } finally {
           btn.disabled = false;
         }
@@ -1973,11 +1979,11 @@
           sessionStorage.setItem(ADMIN_AUTH_KEY, '1');
           route();
         } else {
-          err.textContent = 'Nieprawidłowe hasło.';
+          err.textContent = 'NieprawidĹ‚owe hasĹ‚o.';
           document.getElementById('admin-pass').value = '';
         }
       } catch (ex) {
-        err.textContent = 'Błąd logowania: ' + ex.message;
+        err.textContent = 'BĹ‚Ä…d logowania: ' + ex.message;
       } finally {
         btn.disabled = false;
       }
@@ -2064,7 +2070,7 @@
         }
       });
 
-      // Tabela zamówień admina: status, szacunek, anulowanie, link
+      // Tabela zamĂłwieĹ„ admina: status, szacunek, anulowanie, link
       var ordersTbody = document.getElementById('orders-tbody');
       if (ordersTbody) {
         ordersTbody.addEventListener('change', function (e) {
@@ -2074,7 +2080,7 @@
             var sid = sel.dataset.statusId;
             db.collection('orders').doc(sid).update({ status: sel.value })
               .then(function () { flash('Status zaktualizowany.'); })
-              .catch(function (er) { alert('Błąd: ' + er.message); });
+              .catch(function (er) { alert('BĹ‚Ä…d: ' + er.message); });
             return;
           }
         });
@@ -2087,7 +2093,7 @@
             estimateTimers[eid] = setTimeout(function () {
               db.collection('orders').doc(eid).update({ deliveryEstimate: inp.value.trim() })
                 .then(function () { flash('Szacowany czas dostawy zapisany.'); })
-                .catch(function (er) { alert('Błąd: ' + er.message); });
+                .catch(function (er) { alert('BĹ‚Ä…d: ' + er.message); });
             }, 800);
             return;
           }
@@ -2099,7 +2105,7 @@
           btn = e.target.closest('[data-copy-link]');
           if (btn) {
             var clo = orders[btn.dataset.copyLink];
-            if (clo) copyText(trackingLink(clo.orderCode)).then(function () { flash('Link śledzenia skopiowany.'); });
+            if (clo) copyText(trackingLink(clo.orderCode)).then(function () { flash('Link Ĺ›ledzenia skopiowany.'); });
             return;
           }
         });
@@ -2130,7 +2136,7 @@
       document.getElementById('product-model').addEventListener('change', handleModelSelect);
       document.getElementById('admin-logout').addEventListener('click', adminLogout);
 
-      // Zamykanie modali po kliknięciu w tło
+      // Zamykanie modali po klikniÄ™ciu w tĹ‚o
       document.getElementById('cart-drawer').addEventListener('click', function (e) { if (e.target === this) closeCart(); });
       document.getElementById('share-modal').addEventListener('click', function (e) { if (e.target === this) closeShareModal(); });
       document.getElementById('track-lookup-modal').addEventListener('click', function (e) { if (e.target === this) closeTrackLookup(); });
@@ -2150,23 +2156,23 @@
   </script>
 
   <!-- ============================================================
-       S Z A B L O N Y   W I D O K Ó W
+       S Z A B L O N Y   W I D O K Ă“ W
        ============================================================ -->
 
   <!-- ================= WIDOK 1: SKLEP ================= -->
   <div id="view-shop" data-view class="hidden">
-    <!-- NAGŁÓWEK -->
+    <!-- NAGĹĂ“WEK -->
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo-64.png" alt="Logo Masło3D" class="w-11 h-11 rounded-xl object-cover" />
+        <img src="logo-64.png" alt="Logo MasĹ‚o3D" class="w-11 h-11 rounded-xl object-cover" />
         <div class="flex-1">
-          <h1 class="text-lg font-bold text-white leading-tight">Masło3D</h1>
+          <h1 class="text-lg font-bold text-white leading-tight">MasĹ‚o3D</h1>
           <p class="text-xs text-slate-400">Wydruki 3D</p>
         </div>
-        <button id="share-open" title="Udostępnij stronę (kod QR)"
+        <button id="share-open" title="UdostÄ™pnij stronÄ™ (kod QR)"
           class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">QR</button>
-        <button id="track-lookup-open" title="Śledź zamówienie po numerze"
-          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Śledź paczkę</button>
+        <button id="track-lookup-open" title="ĹšledĹş zamĂłwienie po numerze"
+          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">ĹšledĹş paczkÄ™</button>
         <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
       </div>
     </header>
@@ -2179,15 +2185,15 @@
 
     <main class="max-w-6xl mx-auto px-4 py-8">
       <section class="text-center mb-10">
-        <h2 class="text-3xl sm:text-4xl font-bold text-white">Zamów własny wydruk 3D</h2>
+        <h2 class="text-3xl sm:text-4xl font-bold text-white">ZamĂłw wĹ‚asny wydruk 3D</h2>
         <p class="text-slate-400 mt-2 max-w-xl mx-auto">
-          Wybierz oferty, a koszyk pokaże łączną wagę i cenę. Odbiór w szkole, płatność przy odbiorze.
+          Wybierz oferty, a koszyk pokaĹĽe Ĺ‚Ä…cznÄ… wagÄ™ i cenÄ™. OdbiĂłr w szkole, pĹ‚atnoĹ›Ä‡ przy odbiorze.
         </p>
       </section>
 
       <section>
         <div class="flex items-center justify-between mb-4">
-          <h3 class="text-sm uppercase tracking-wide text-slate-500 font-semibold">Dostępne oferty</h3>
+          <h3 class="text-sm uppercase tracking-wide text-slate-500 font-semibold">DostÄ™pne oferty</h3>
           <span id="price-per-gram-info" class="text-sm text-accent font-semibold"></span>
         </div>
         <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
@@ -2195,7 +2201,7 @@
     </main>
 
     <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
-      <p>Masło3D - projekt szkolny</p>
+      <p>MasĹ‚o3D - projekt szkolny</p>
     </footer>
 
     <!-- PRZYCISK KOSZYKA -->
@@ -2209,7 +2215,7 @@
         class="hidden min-w-6 h-6 px-1.5 rounded-full bg-slate-900 text-white text-xs font-bold items-center justify-center"></span>
     </button>
 
-    <!-- KOSZYK (drawer — 3 kroki) -->
+    <!-- KOSZYK (drawer â€” 3 kroki) -->
     <div id="cart-drawer" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
       <div class="ml-auto w-full max-w-md h-full bg-panel border-l border-white/10 flex flex-col">
         <div id="cart-header" class="flex items-center justify-between p-4 border-b border-white/10"></div>
@@ -2218,11 +2224,11 @@
       </div>
     </div>
 
-    <!-- MODAL: UDOSTĘPNIJ (QR) -->
+    <!-- MODAL: UDOSTÄPNIJ (QR) -->
     <div id="share-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
-        <h3 class="text-lg font-bold text-white mb-1">Udostępnij stronę</h3>
-        <p class="text-sm text-slate-400 mb-4">Zeskanuj kod QR, aby otworzyć sklep na telefonie.</p>
+        <h3 class="text-lg font-bold text-white mb-1">UdostÄ™pnij stronÄ™</h3>
+        <p class="text-sm text-slate-400 mb-4">Zeskanuj kod QR, aby otworzyÄ‡ sklep na telefonie.</p>
         <div class="flex justify-center bg-white rounded-xl p-3 mb-4"><div id="share-qr"></div></div>
         <div class="flex items-center gap-2">
           <input id="share-url" type="text" readonly
@@ -2235,14 +2241,14 @@
       </div>
     </div>
 
-    <!-- MODAL: ŚLEDŹ PACZKĘ (wpisz 3-cyfrowy numer zamówienia) -->
+    <!-- MODAL: ĹšLEDĹą PACZKÄ (wpisz 3-cyfrowy numer zamĂłwienia) -->
     <div id="track-lookup-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-        <h3 class="text-lg font-bold text-white mb-1">Śledź paczkę</h3>
-        <p class="text-sm text-slate-400 mb-4">Wpisz 3-cyfrowy numer zamówienia otrzymany po złożeniu.</p>
+        <h3 class="text-lg font-bold text-white mb-1">ĹšledĹş paczkÄ™</h3>
+        <p class="text-sm text-slate-400 mb-4">Wpisz 3-cyfrowy numer zamĂłwienia otrzymany po zĹ‚oĹĽeniu.</p>
         <form id="track-lookup-form" class="space-y-4">
           <div>
-            <label class="block text-sm text-slate-400 mb-1">Numer zamówienia</label>
+            <label class="block text-sm text-slate-400 mb-1">Numer zamĂłwienia</label>
             <input id="track-lookup-code" type="text" inputmode="numeric" pattern="\d{3}" maxlength="3" required
               placeholder="np. 294"
               class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-center text-2xl font-mono tracking-widest focus:border-accent focus:outline-none" />
@@ -2250,7 +2256,7 @@
           <p id="track-lookup-error" class="text-sm text-red-300"></p>
           <div class="flex gap-3">
             <button type="submit"
-              class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Otwórz</button>
+              class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">OtwĂłrz</button>
             <button type="button" id="track-lookup-close"
               class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Anuluj</button>
           </div>
@@ -2258,22 +2264,22 @@
       </div>
     </div>
 
-    <!-- KARTA PODSUMOWANIA PO ZAMÓWIENIU -->
+    <!-- KARTA PODSUMOWANIA PO ZAMĂ“WIENIU -->
   </div>
 
-  <!-- ================= WIDOK 2: ŚLEDZENIE ================= -->
+  <!-- ================= WIDOK 2: ĹšLEDZENIE ================= -->
   <div id="view-tracking" data-view class="hidden">
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
-          <h1 class="font-bold text-white">Masło3D</h1>
+          <img src="logo-64.png" alt="Logo MasĹ‚o3D" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">MasĹ‚o3D</h1>
         </div>
       </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
         <div id="tracking-box" class="w-full"></div>
       </main>
-      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
+      <footer class="text-center text-sm text-slate-500 py-6">MasĹ‚o3D</footer>
     </div>
   </div>
 
@@ -2283,14 +2289,14 @@
       <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
           <a href="?" class="text-accent hover:text-sky-300 text-sm font-semibold">&larr; Sklep</a>
-          <img src="logo-64.png" alt="Logo Masło3D" class="w-8 h-8 rounded-lg object-cover" />
+          <img src="logo-64.png" alt="Logo MasĹ‚o3D" class="w-8 h-8 rounded-lg object-cover" />
           <button id="pd-open-cart" class="ml-auto text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Koszyk</button>
         </div>
       </header>
       <main class="flex-1 px-4 py-8">
         <div id="product-detail-box" class="max-w-5xl mx-auto"></div>
       </main>
-      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
+      <footer class="text-center text-sm text-slate-500 py-6">MasĹ‚o3D</footer>
     </div>
   </div>
 
@@ -2299,8 +2305,8 @@
     <div class="min-h-screen flex flex-col">
       <header class="border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
-          <h1 class="font-bold text-white">Masło3D</h1>
+          <img src="logo-64.png" alt="Logo MasĹ‚o3D" class="w-10 h-10 rounded-lg object-cover" />
+          <h1 class="font-bold text-white">MasĹ‚o3D</h1>
         </div>
       </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
@@ -2314,17 +2320,17 @@
               </div>
               <div>
                 <h2 class="text-lg font-bold text-white">Panel administratora</h2>
-                <p class="text-xs text-slate-400">Zaloguj się, aby kontynuować</p>
+                <p class="text-xs text-slate-400">Zaloguj siÄ™, aby kontynuowaÄ‡</p>
               </div>
             </div>
             <form id="admin-login-form" class="space-y-4">
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Hasło</label>
+                <label class="block text-sm text-slate-400 mb-1">HasĹ‚o</label>
                 <input id="admin-pass" type="password" required autofocus
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
               <div id="admin-pass-confirm-group" class="hidden">
-                <label class="block text-sm text-slate-400 mb-1">Potwierdź hasło</label>
+                <label class="block text-sm text-slate-400 mb-1">PotwierdĹş hasĹ‚o</label>
                 <input id="admin-pass-confirm" type="password"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
@@ -2332,11 +2338,11 @@
               <button id="admin-login-btn" type="submit"
                 class="w-full py-3 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all shadow-lg shadow-accent/20">Zaloguj</button>
             </form>
-            <a href="." class="mt-4 block text-center text-sm text-slate-500 hover:text-accent transition-colors">Wróć do sklepu</a>
+            <a href="." class="mt-4 block text-center text-sm text-slate-500 hover:text-accent transition-colors">WrĂłÄ‡ do sklepu</a>
           </div>
         </div>
       </main>
-      <footer class="text-center text-sm text-slate-500 py-6">Masło3D</footer>
+      <footer class="text-center text-sm text-slate-500 py-6">MasĹ‚o3D</footer>
     </div>
   </div>
 
@@ -2344,10 +2350,10 @@
   <div id="view-admin" data-view class="hidden">
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
+        <img src="logo-64.png" alt="Logo MasĹ‚o3D" class="w-10 h-10 rounded-lg object-cover" />
         <div class="flex-1">
           <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
-          <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
+          <p class="text-xs text-slate-400">System zarzÄ…dzania produkcjÄ… i zamĂłwieniami</p>
         </div>
         <button id="admin-logout" class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-red-400/40 hover:text-red-300 transition-colors">Wyloguj</button>
         <a href="." class="text-xs text-slate-500 hover:text-accent transition-colors">Widok sklepu</a>
@@ -2358,10 +2364,10 @@
 
       <!-- STATYSTYKI -->
       <section class="mb-10">
-        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki na żywo</h2>
+        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki na ĹĽywo</h2>
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">Wszystkie zamówienia</p>
+            <p class="text-xs text-slate-500">Wszystkie zamĂłwienia</p>
             <p id="stat-total" class="text-2xl font-bold text-white mt-1">0</p>
           </div>
           <div class="bg-panel border border-white/10 rounded-2xl p-4">
@@ -2378,7 +2384,7 @@
           </div>
           <div class="bg-panel border border-white/10 rounded-2xl p-4">
             <p class="text-xs text-slate-500">Szacowany zarobek</p>
-            <p id="stat-revenue" class="text-2xl font-bold text-accent mt-1">0,00 zł</p>
+            <p id="stat-revenue" class="text-2xl font-bold text-accent mt-1">0,00 zĹ‚</p>
           </div>
         </div>
        </section>
@@ -2387,16 +2393,16 @@
       <section class="mb-10">
         <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki tygodniowe</h2>
         <div class="grid lg:grid-cols-2 gap-8">
-          <!-- Liczba zamówień -->
+          <!-- Liczba zamĂłwieĹ„ -->
           <div class="bg-panel border border-white/10 rounded-2xl p-6">
-            <p class="text-sm font-semibold text-white mb-2">Zamówienia (liczba / dzień)</p>
+            <p class="text-sm font-semibold text-white mb-2">ZamĂłwienia (liczba / dzieĹ„)</p>
             <div class="flex items-end justify-around gap-1 h-40">
               <div id="chart-bars" class="flex items-end justify-around w-full gap-1"></div>
             </div>
           </div>
-          <!-- Łączna waga -->
+          <!-- ĹÄ…czna waga -->
           <div class="bg-panel border border-white/10 rounded-2xl p-6">
-            <p class="text-sm font-semibold text-white mb-2">Wydrukowano (czas / dzień)</p>
+            <p class="text-sm font-semibold text-white mb-2">Wydrukowano (czas / dzieĹ„)</p>
             <div class="flex items-end justify-around gap-1 h-40">
               <div id="chart-grams" class="flex items-end justify-around w-full gap-1"></div>
             </div>
@@ -2410,7 +2416,7 @@
           <h3 class="text-lg font-bold text-white mb-4">Ustawienia sklepu</h3>
           <form id="settings-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Cena za gram (zł/gr)</label>
+              <label class="block text-sm text-slate-400 mb-1">Cena za gram (zĹ‚/gr)</label>
               <input id="set-price" type="number" step="0.01" min="0" required placeholder="np. 0.20"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
@@ -2418,7 +2424,7 @@
               <label class="block text-sm text-slate-400 mb-1">Tryb</label>
               <select id="set-mode"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none">
-                <option value="queue">Tryb kolejki (zbieranie zamówień - wakacje)</option>
+                <option value="queue">Tryb kolejki (zbieranie zamĂłwieĹ„ - wakacje)</option>
                 <option value="active">Tryb aktywny</option>
               </select>
             </div>
@@ -2435,7 +2441,7 @@
         </div>
       </section>
 
-      <!-- ZARZĄDZANIE PRODUKTAMI -->
+      <!-- ZARZÄ„DZANIE PRODUKTAMI -->
       <section class="mb-10 grid lg:grid-cols-2 gap-8">
         <!-- Formularz dodawania/edycji -->
         <div id="admin-form" class="bg-panel border border-white/10 rounded-2xl p-6">
@@ -2443,12 +2449,12 @@
           <form id="admin-product-form" class="space-y-4">
             <div>
               <label class="block text-sm text-slate-400 mb-1">Nazwa *</label>
-              <input id="product-name" type="text" required placeholder="np. Długopis 3D"
+              <input id="product-name" type="text" required placeholder="np. DĹ‚ugopis 3D"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Opis</label>
-              <textarea id="product-desc" rows="2" placeholder="Krótki opis wydruku"
+              <textarea id="product-desc" rows="2" placeholder="KrĂłtki opis wydruku"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none"></textarea>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -2489,7 +2495,7 @@
             </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Częst. gwizdka (Hz)</label>
+                <label class="block text-sm text-slate-400 mb-1">CzÄ™st. gwizdka (Hz)</label>
                 <input id="product-whistle-freq" type="text" placeholder="np. 880 lub 2200, 2400"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
@@ -2511,7 +2517,7 @@
                   <select id="bundle-add-product"
                     class="flex-1 bg-base border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:border-accent focus:outline-none">
                   </select>
-                  <input id="bundle-add-qty" type="number" min="1" max="99" value="1" placeholder="Ilość"
+                  <input id="bundle-add-qty" type="number" min="1" max="99" value="1" placeholder="IloĹ›Ä‡"
                     class="w-20 bg-base border border-white/10 rounded-xl px-3 py-2 text-sm text-white text-center focus:border-accent focus:outline-none" />
                   <button id="bundle-add-btn" type="button"
                     class="px-4 py-2 rounded-xl bg-accent/20 hover:bg-accent/30 text-accent text-sm font-semibold transition-all">+ Dodaj</button>
@@ -2519,12 +2525,12 @@
               </div>
             </div>
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Miniaturka (generuje się automatycznie z modelu 3D)</label>
+              <label class="block text-sm text-slate-400 mb-1">Miniaturka (generuje siÄ™ automatycznie z modelu 3D)</label>
               <input id="product-image-data" type="hidden" value="" />
-              <img id="product-image-preview" alt="Podgląd miniaturki" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
+              <img id="product-image-preview" alt="PodglÄ…d miniaturki" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
               <button id="refresh-thumb-btn" type="button"
-                class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Odśwież miniaturkę</button>
+                class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">OdĹ›wieĹĽ miniaturkÄ™</button>
               <div id="rot-controls" class="mt-3">
                 <label for="view-presets" class="block text-xs text-slate-500 mb-1">Widok kamery</label>
                 <select id="view-presets"
@@ -2533,40 +2539,54 @@
                   <option value="iso" selected>Izometria</option>
                   <option value="isoHigh">Izometria wysoka</option>
                   <option value="isoLow">Izometria niska</option>
-                  <option value="isoShallow">Izometria płytka</option>
-                  <option value="front">Przód</option>
-                  <option value="frontHigh">Przód wysoko</option>
-                  <option value="frontLow">Przód nisko</option>
-                  <option value="back">Tył</option>
-                  <option value="backLow">Tył nisko</option>
+                  <option value="isoShallow">Izometria pĹ‚ytka</option>
+                  <option value="front">PrzĂłd</option>
+                  <option value="frontHigh">PrzĂłd wysoko</option>
+                  <option value="frontLow">PrzĂłd nisko</option>
+                  <option value="back">TyĹ‚</option>
+                  <option value="backLow">TyĹ‚ nisko</option>
                   <option value="left">Lewo</option>
                   <option value="right">Prawo</option>
-                  <option value="rightFront">Prawy przód</option>
-                  <option value="leftFront">Lewy przód</option>
-                  <option value="rightBack">Prawy tył</option>
-                  <option value="leftBack">Lewy tył</option>
-                  <option value="top">Z góry</option>
-                  <option value="topFront">Z góry, przód</option>
-                  <option value="topBack">Z góry, tył</option>
-                  <option value="topLeft">Z góry, lewo</option>
-                  <option value="topRight">Z góry, prawo</option>
+                  <option value="rightFront">Prawy przĂłd</option>
+                  <option value="leftFront">Lewy przĂłd</option>
+                  <option value="rightBack">Prawy tyĹ‚</option>
+                  <option value="leftBack">Lewy tyĹ‚</option>
+                  <option value="top">Z gĂłry</option>
+                  <option value="topFront">Z gĂłry, przĂłd</option>
+                  <option value="topBack">Z gĂłry, tyĹ‚</option>
+                  <option value="topLeft">Z gĂłry, lewo</option>
+                  <option value="topRight">Z gĂłry, prawo</option>
                 </select>
-                <label for="fov-slider" class="block text-xs text-slate-500 mt-3 mb-1">Przybliżenie (FOV <span id="fov-value">45</span>°)</label>
+                <label for="fov-slider" class="block text-xs text-slate-500 mt-3 mb-1">PrzybliĹĽenie (FOV <span id="fov-value">45</span>Â°)</label>
                 <input id="fov-slider" type="range" min="15" max="75" step="1" value="45"
                   class="w-full accent-accent cursor-pointer"
                   oninput="window.__setFov(this.value)" />
-                <label for="size-slider" class="block text-xs text-slate-500 mt-3 mb-1">Wielkość modelu (<span id="size-value">100</span>%)</label>
+                <label for="size-slider" class="block text-xs text-slate-500 mt-3 mb-1">WielkoĹ›Ä‡ modelu (<span id="size-value">100</span>%)</label>
                 <input id="size-slider" type="range" min="40" max="200" step="5" value="100"
                   class="w-full accent-accent cursor-pointer"
                   oninput="window.__setSize(this.value)" />
+                <label for="center-x" class="block text-xs text-slate-500 mt-3 mb-1">RÄ™czne przesuniÄ™cie X (<span id="center-x-value">0</span>%)</label>
+                <input id="center-x" type="range" min="-100" max="100" step="1" value="0"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setCenter('x', this.value)" />
+                <label for="center-y" class="block text-xs text-slate-500 mt-3 mb-1">RÄ™czne przesuniÄ™cie Y (<span id="center-y-value">0</span>%)</label>
+                <input id="center-y" type="range" min="-100" max="100" step="1" value="0"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setCenter('y', this.value)" />
                 <label class="flex items-center gap-2 mt-3 cursor-pointer">
                   <input id="auto-center-toggle" type="checkbox" checked class="accent-accent" />
-                  <span class="text-xs text-slate-500">Auto wyśrodkowanie</span>
+                  <span class="text-xs text-slate-500">Auto wyĹ›rodkowanie</span>
                 </label>
+                <div class="flex gap-3 mt-3">
+                  <button type="button" id="reset-view-btn"
+                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Reset widoku</button>
+                  <button type="button" id="download-thumb-btn"
+                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Pobierz PNG</button>
+                </div>
               </div>
             </div>
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
+              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> â€” z niego powstaje miniaturka)</label>
               <input id="product-model" type="file" accept=".stl,.3mf"
                 class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
               <input id="product-model-data" type="hidden" value="" />
@@ -2581,12 +2601,12 @@
               <button type="submit" id="admin-form-submit"
                 class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz produkt</button>
               <button type="button" id="admin-form-reset" onclick="resetProductForm()"
-                class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Wyczyść</button>
+                class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">WyczyĹ›Ä‡</button>
             </div>
           </form>
         </div>
 
-        <!-- Lista produktów -->
+        <!-- Lista produktĂłw -->
         <div class="bg-panel border border-white/10 rounded-2xl p-6">
           <h3 class="text-lg font-bold text-white mb-4">Produkty w sklepie</h3>
           <div id="admin-products" class="space-y-3"></div>
@@ -2601,15 +2621,15 @@
         </div>
       </section>
 
-      <!-- TABELA ZAMÓWIEŃ -->
+      <!-- TABELA ZAMĂ“WIEĹ -->
       <section class="bg-panel border border-white/10 rounded-2xl p-6 mb-10">
-        <h3 class="text-lg font-bold text-white mb-4">Zamówienia</h3>
+        <h3 class="text-lg font-bold text-white mb-4">ZamĂłwienia</h3>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-sm border-collapse min-w-[1020px]">
             <thead>
               <tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">
                 <th class="py-3 px-3">ID</th>
-                <th class="py-3 px-3">Imię / Klasa</th>
+                <th class="py-3 px-3">ImiÄ™ / Klasa</th>
                 <th class="py-3 px-3">Produkt</th>
                 <th class="py-3 px-3">Waga / Cena</th>
                 <th class="py-3 px-3">Data</th>
@@ -2628,8 +2648,8 @@
     <!-- MODAL: ANULOWANIE -->
     <div id="cancel-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
       <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-        <h3 class="text-lg font-bold text-white mb-1">Anuluj i usuń zamówienie</h3>
-        <p class="text-sm text-slate-400 mb-5">Wybierz powód anulowania. Uczeń zobaczy go na swoim linku śledzenia.</p>
+        <h3 class="text-lg font-bold text-white mb-1">Anuluj i usuĹ„ zamĂłwienie</h3>
+        <p class="text-sm text-slate-400 mb-5">Wybierz powĂłd anulowania. UczeĹ„ zobaczy go na swoim linku Ĺ›ledzenia.</p>
         <div id="cancel-reasons" class="space-y-2"></div>
         <button onclick="closeCancelModal()"
           class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
@@ -2645,7 +2665,7 @@
 
   <!-- ============================================================
        Generowanie miniaturki z modelu 3D (STL/3MF) przez Three.js.
-       Model wypełnia cały kwadrat, obrót XYZ z kontrolek w formularzu.
+       Model wypeĹ‚nia caĹ‚y kwadrat, obrĂłt XYZ z kontrolek w formularzu.
        Render 400px AVIF/PNG -> Base122 (#product-image-data).
        ============================================================ -->
   <script type="module">
@@ -2679,7 +2699,7 @@
 
     const deg2rad = (d) => d * Math.PI / 180;
 
-    // 20 presetów widoku kamery (model zawsze wyśrodkowany i wypełnia kadr)
+    // 20 presetĂłw widoku kamery (model zawsze wyĹ›rodkowany i wypeĹ‚nia kadr)
     const VIEW_PRESETS = {
       iso: [1, 0.9, 1],
       front: [0, 0.5, 1],
@@ -2705,8 +2725,13 @@
     let currentView = 'iso';
     let currentFov = 45;
     let sizeFactor = 1;
+    let manualX = 0;
+    let manualY = 0;
     let autoCenter = true;
-    const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartości
+    const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartoĹ›ci
+    let sharedRenderer = null;
+    let sharedEnvTex = null;
+    let sharedBg = null;
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
@@ -2721,13 +2746,19 @@
       dlight.position.set(6, 12, 8);
       scene.add(dlight);
 
-      const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
+      const renderer = sharedRenderer || new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(1);
       renderer.setSize(400, 400);
-      scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+      if (!sharedRenderer) {
+        sharedRenderer = renderer;
+        sharedEnvTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+        sharedBg = await new THREE.TextureLoader().loadAsync('bg.jpg');
+        sharedBg.colorSpace = THREE.SRGBColorSpace;
+      }
+      scene.environment = sharedEnvTex;
 
-      // Wyśrodkowanie modelu wokół początku układu (rotacja wokół środka)
+      // WyĹ›rodkowanie modelu wokĂłĹ‚ poczÄ…tku ukĹ‚adu (rotacja wokĂłĹ‚ Ĺ›rodka)
       scene.add(product);
       product.updateMatrixWorld(true);
       let box = new THREE.Box3().setFromObject(product);
@@ -2737,9 +2768,9 @@
         product.updateMatrixWorld(true);
       }
 
-      // Dopasowanie kamery: perspektywiczne (uwzględnia głębię, więc bez przycinania
-      // w widokach z tyłu) i rozprzęgnięte od FOV (dystans liczony raz na REF_FOV,
-      // a FOV działa jak prawdziwy zoom).
+      // Dopasowanie kamery: perspektywiczne (uwzglÄ™dnia gĹ‚Ä™biÄ™, wiÄ™c bez przycinania
+      // w widokach z tyĹ‚u) i rozprzÄ™gniÄ™te od FOV (dystans liczony raz na REF_FOV,
+      // a FOV dziaĹ‚a jak prawdziwy zoom).
       box = new THREE.Box3().setFromObject(product);
       const c2 = box.getCenter(new THREE.Vector3());
       const mn = box.min, mx = box.max;
@@ -2757,7 +2788,7 @@
       const right = new THREE.Vector3().crossVectors(dir, vUp).normalize();
       const upB = new THREE.Vector3().crossVectors(right, dir).normalize();
 
-      // Rzutowane położenie na ekranie (perspektywa): (right·p)/depth itd.
+      // Rzutowane poĹ‚oĹĽenie na ekranie (perspektywa): (rightÂ·p)/depth itd.
       const refTanHalf = Math.tan(deg2rad(REF_FOV) / 2);
       const targetFill = 0.92;
       const proj = (p, d) => {
@@ -2765,7 +2796,7 @@
         const scale = Math.max(depth, 1e-6);
         return Math.max(Math.abs(right.dot(p)) / scale, Math.abs(upB.dot(p)) / scale);
       };
-      // Iteracyjne znalezienie dystansu, przy którym model wypełnia targetFill w REF_FOV
+      // Iteracyjne znalezienie dystansu, przy ktĂłrym model wypeĹ‚nia targetFill w REF_FOV
       let dist = 1;
       for (let it = 0; it < 8; it++) {
         let maxNdc = 1e-6;
@@ -2773,15 +2804,23 @@
         if (maxNdc <= 0) break;
         dist *= maxNdc / (targetFill * refTanHalf);
       }
-      // FOV i wielkość modelu jako niezależne mnożniki (FOV teraz realnie skaluje widok)
+      // FOV i wielkoĹ›Ä‡ modelu jako niezaleĹĽne mnoĹĽniki (FOV teraz realnie skaluje widok)
       const renderDist = (dist / sizeFactor) * (Math.tan(deg2rad(REF_FOV) / 2) / Math.tan(deg2rad(currentFov) / 2));
 
       camera.position.copy(c2).add(dir.multiplyScalar(renderDist));
       camera.near = renderDist / 1000;
-      camera.far = renderDist * 1000;
+      // Manual offset X/Y (procent kadru) - przesuniÄ™cie punktu lookAt
+      if (manualX !== 0 || manualY !== 0) {
+        const halfFrame = renderDist * Math.tan(deg2rad(currentFov) / 2);
+        const look = c2.clone()
+          .add(right.clone().multiplyScalar((manualX / 100) * halfFrame))
+          .add(upB.clone().multiplyScalar((manualY / 100) * halfFrame));
+        camera.lookAt(look);
+      } else {
+        camera.lookAt(c2);
+      }
+camera.far = renderDist * 1000;
       camera.updateProjectionMatrix();
-      camera.lookAt(c2);
-
       renderer.render(scene, camera);
 
       // Zapis 400px jako AVIF/PNG -> Base122
@@ -2816,40 +2855,41 @@
       return b122;
     }
 
-    // Re-generacja miniaturki z już wczytanego modelu (bez ponownego wybierania pliku)
+    // Re-generacja miniaturki z juĹĽ wczytanego modelu (bez ponownego wybierania pliku)
     async function refreshFromStored() {
       const data = document.getElementById('product-model-data').value;
       const info = document.getElementById('product-image-info');
       const btn = document.getElementById('refresh-thumb-btn');
       if (!data) { alert('Najpierw wczytaj plik 3D (STL/3MF).'); return; }
-      if (btn) { btn.disabled = true; btn.textContent = 'Generuję…'; }
+      if (btn) { btn.disabled = true; btn.textContent = 'GenerujÄ™â€¦'; }
       try {
         await generateModelThumbnail(base122ToBinary(data));
       } catch (err) {
         console.error('Miniaturka nieudana:', err);
         if (info) {
-          info.textContent = 'Błąd generowania miniaturki: ' + (err && err.message ? err.message : err);
+          info.textContent = 'BĹ‚Ä…d generowania miniaturki: ' + (err && err.message ? err.message : err);
           info.classList.add('text-amber-400');
           info.classList.remove('text-slate-500');
         }
       } finally {
-        if (btn) { btn.disabled = false; btn.textContent = 'Odśwież miniaturkę'; }
+        if (btn) { btn.disabled = false; btn.textContent = 'OdĹ›wieĹĽ miniaturkÄ™'; }
       }
     }
 
     const refreshBtn = document.getElementById('refresh-thumb-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', refreshFromStored);
 
-    // Presety widoku kamery — zmiana wyboru przełącza kąt kamery i renderuje
+    // Presety widoku kamery â€” zmiana wyboru przeĹ‚Ä…cza kÄ…t kamery i renderuje
     function selectView(view) {
       currentView = view;
       refreshFromStored();
+      saveView();
     }
     window.__setView = function (v) { selectView(v); };
     const viewSelect = document.getElementById('view-presets');
     if (viewSelect) viewSelect.addEventListener('change', function () { selectView(this.value); });
 
-    // Regulacja FOV (przybliżenie) — mniejszy FOV = mocniejszy zoom
+    // Regulacja FOV (przybliĹĽenie) â€” mniejszy FOV = mocniejszy zoom
     let fovTimer = null;
     function setFov(val) {
       currentFov = Math.max(15, Math.min(75, parseFloat(val) || 45));
@@ -2857,12 +2897,13 @@
       if (lbl) lbl.textContent = Math.round(currentFov);
       clearTimeout(fovTimer);
       fovTimer = setTimeout(refreshFromStored, 200); // debounce -> mniej lagu
+      saveView();
     }
     window.__setFov = function (v) { setFov(v); };
     const fovSlider = document.getElementById('fov-slider');
     if (fovSlider) fovSlider.addEventListener('input', function () { setFov(this.value); });
 
-    // Regulacja wielkości modelu (%)
+    // Regulacja wielkoĹ›ci modelu (%)
     let sizeTimer = null;
     function setSize(val) {
       sizeFactor = (Math.max(40, Math.min(200, parseFloat(val) || 100))) / 100;
@@ -2870,17 +2911,118 @@
       if (slbl) slbl.textContent = Math.round(sizeFactor * 100);
       clearTimeout(sizeTimer);
       sizeTimer = setTimeout(refreshFromStored, 200); // debounce
+      saveView();
     }
     window.__setSize = function (v) { setSize(v); };
     const sizeSlider = document.getElementById('size-slider');
     if (sizeSlider) sizeSlider.addEventListener('input', function () { setSize(this.value); });
+
+    // Manualne centrowanie X/Y
+    window.__setCenter = function (axis, val) {
+      if (axis === 'x') manualX = parseFloat(val) || 0;
+      else manualY = parseFloat(val) || 0;
+      const xLbl = document.getElementById('center-x-value');
+      const yLbl = document.getElementById('center-y-value');
+      if (xLbl) xLbl.textContent = Math.round(manualX);
+      if (yLbl) yLbl.textContent = Math.round(manualY);
+      refreshFromStored();
+      saveView();
+    };
 
     // Auto wyśrodkowanie (przełącznik)
     const autoCenterToggle = document.getElementById('auto-center-toggle');
     if (autoCenterToggle) autoCenterToggle.addEventListener('change', function () {
       autoCenter = this.checked;
       refreshFromStored();
+      saveView();
     });
+
+    // Zapamiętywanie ustawień w localStorage
+    const VIEW_KEY = 'maslo3d_view';
+    function saveView() {
+      const viewData = {
+        view: currentView,
+        fov: currentFov,
+        size: sizeFactor * 100,
+        manualX: manualX,
+        manualY: manualY,
+        autoCenter: autoCenter
+      };
+      localStorage.setItem(VIEW_KEY, JSON.stringify(viewData));
+    }
+    function loadView() {
+      const saved = localStorage.getItem(VIEW_KEY);
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          currentView = data.view || 'iso';
+          currentFov = data.fov || 45;
+          sizeFactor = (data.size || 100) / 100;
+          manualX = data.manualX || 0;
+          manualY = data.manualY || 0;
+          autoCenter = data.autoCenter !== false;
+        } catch (e) {
+          // uszkodzony zapis -> używamy domyślnych
+        }
+      }
+    }
+
+    // Synchronizacja stanu interfejsu z faktycznym stanem widoku
+    function syncViewUI() {
+      const viewSelect = document.getElementById('view-presets');
+      if (viewSelect) viewSelect.value = currentView;
+      const fovSlider = document.getElementById('fov-slider');
+      if (fovSlider) fovSlider.value = Math.round(currentFov);
+      const fovLbl = document.getElementById('fov-value');
+      if (fovLbl) fovLbl.textContent = Math.round(currentFov);
+      const sizeSlider = document.getElementById('size-slider');
+      if (sizeSlider) sizeSlider.value = Math.round(sizeFactor * 100);
+      const sizeLbl = document.getElementById('size-value');
+      if (sizeLbl) sizeLbl.textContent = Math.round(sizeFactor * 100);
+      const cx = document.getElementById('center-x');
+      if (cx) cx.value = Math.round(manualX);
+      const cxLbl = document.getElementById('center-x-value');
+      if (cxLbl) cxLbl.textContent = Math.round(manualX);
+      const cy = document.getElementById('center-y');
+      if (cy) cy.value = Math.round(manualY);
+      const cyLbl = document.getElementById('center-y-value');
+      if (cyLbl) cyLbl.textContent = Math.round(manualY);
+      const toggle = document.getElementById('auto-center-toggle');
+      if (toggle) toggle.checked = autoCenter;
+    }
+
+    // Reset widoku do domyślnych ustawień
+    window.__resetView = function () {
+      currentView = 'iso';
+      currentFov = 45;
+      sizeFactor = 1;
+      manualX = 0;
+      manualY = 0;
+      autoCenter = true;
+      syncViewUI();
+      refreshFromStored();
+      saveView();
+    };
+    const resetBtn = document.getElementById('reset-view-btn');
+    if (resetBtn) resetBtn.addEventListener('click', window.__resetView);
+
+    // Pobieranie miniaturki jako PNG
+    window.__downloadThumb = function () {
+      const img = document.getElementById('product-image-preview');
+      if (!img || !img.src || img.src === '#' || !img.getAttribute('src')) return;
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = 'maslo3d_' + (currentView || 'view') + '.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    const dlBtn = document.getElementById('download-thumb-btn');
+    if (dlBtn) dlBtn.addEventListener('click', window.__downloadThumb);
+
+    loadView();
+    syncViewUI();
+    saveView();
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
