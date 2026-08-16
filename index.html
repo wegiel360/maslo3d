@@ -51,12 +51,15 @@
        aby nie obciążać początkowego ładowania strony.
        ============================================================ -->
 
-  <!-- Tło aplikacji (obraz bliss) z ciemną nakładką dla czytelności -->
+  <!-- Tło aplikacji: subtelny szum (czysty CSS, bez obrazka/JS) dla czytelności i lekkości na CPU -->
   <style>
     body {
-      background:
-        linear-gradient(rgba(11, 15, 26, 0.84), rgba(11, 15, 26, 0.92)),
-        url('bg.jpg') center / cover fixed no-repeat;
+      background-color: #0b0f1a;
+      background-image:
+        radial-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+        radial-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+      background-size: 3px 3px, 3px 3px;
+      background-position: 0 0, 1.5px 1.5px;
     }
 
     /* Glassmorphism - delikatne, półprzezroczyste panele (frosted glass).
@@ -280,6 +283,7 @@
 
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
     let settings = { pricePerGram: 0, mode: 'queue', banner: '', adminPasswordHash: '' }; // cena za gram (zł), tryb, komunikat, hash hasła
+    let firstDataLoaded = false; // true po pierwszym dostarczeniu produktów i ustawień (unika flasha "Produkt nie znaleziony")
     let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, createdAt}
     let orders = {};   // id -> {name, className, delivery, items, totalWeight, totalPrice, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
@@ -619,10 +623,12 @@
       // Ustawienia (cena za gram, tryb, baner)
       unsubSettings = db.collection('settings').doc('main').onSnapshot(function (snap) {
         settings = snap.exists ? snap.data() : settings;
+        if (!firstDataLoaded && productsLoaded) firstDataLoaded = true;
         scheduleRender();
       }, function (err) { console.error('Settings listener error:', err); });
 
       // Produkty — incrementalne aktualizacje
+      var productsLoaded = false;
       unsubProducts = db.collection('products').onSnapshot(function (snap) {
         snap.docChanges().forEach(function (change) {
           if (change.type === 'added' || change.type === 'modified') {
@@ -631,6 +637,8 @@
             delete products[change.doc.id];
           }
         });
+        productsLoaded = true;
+        if (!firstDataLoaded && settings !== undefined) firstDataLoaded = true;
         scheduleRender();
       }, function (err) { console.error('Products listener error:', err); });
 
@@ -716,6 +724,11 @@
       var box = document.getElementById('product-detail-box');
       var p = products[productId];
       if (!p) {
+        if (!firstDataLoaded) {
+          // Dane z Firestore jeszcze nie przyjechały — pokaż placeholder zamiast mylącego błędu
+          box.innerHTML = '<div class="text-center py-16"><div class="inline-block w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-slate-400 text-lg">Ładowanie…</p></div>';
+          return;
+        }
         box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent hover:text-sky-300 text-sm mt-4 inline-block">&larr; Wróć do sklepu</a></div>';
         return;
       }
