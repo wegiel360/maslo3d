@@ -722,6 +722,12 @@
 
       var img = imageSrcFor(p.imageUrl || p.image);
       var hasImg = img && img.length > 20;
+      var galleryImages = [];
+      if (hasImg) galleryImages.push(img);
+      Array.prototype.concat.apply([], [p.photos || []]).forEach(function (ph) {
+        var s = imageSrcFor(ph);
+        if (s && s.length > 20) galleryImages.push(s);
+      });
       var isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq;
       var isBundle = !!(p.bundle && p.bundle.items);
       var outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
@@ -734,9 +740,16 @@
 
       var html =
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-8">' +
-        '  <div class="aspect-square w-full rounded-2xl overflow-hidden bg-black/40 shadow-xl">' +
-        (hasImg
-          ? '  <img src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" />'
+        '  <div id="pd-gallery-wrap" class="relative aspect-square w-full rounded-2xl overflow-hidden bg-black/40 shadow-xl select-none" style="touch-action:pan-y">' +
+        (galleryImages.length > 0
+          ? galleryImages.map(function (gi, gidx) {
+            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-cover ' + (gidx === 0 ? '' : 'hidden') + '" />';
+          }).join('') +
+          (galleryImages.length > 1
+            ? '<button type="button" data-gall-prev class="gallery-arrow absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&larr;</button>' +
+              '<button type="button" data-gall-next class="gallery-arrow absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&rarr;</button>' +
+              '<div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">' + galleryImages.map(function (_, d) { return '<span data-gall-dot="' + d + '" class="w-2 h-2 rounded-full bg-white/60 ' + (d === 0 ? 'opacity-100' : 'opacity-40') + '"></span>'; }).join('') + '</div>'
+            : '')
           : '  <div class="w-full h-full flex items-center justify-center text-slate-600"><svg class="w-24 h-24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg></div>') +
         '  </div>' +
         '  <div class="flex flex-col">' +
@@ -762,6 +775,40 @@
         '</div>';
 
       box.innerHTML = html;
+
+      if (galleryImages.length > 1) {
+        var gallCurrent = 0;
+        var gallWrap = document.getElementById('pd-gallery-wrap');
+        function gallShow(i) {
+          gallCurrent = (i + galleryImages.length) % galleryImages.length;
+          var imgs = gallWrap.querySelectorAll('.pd-gall-img');
+          imgs.forEach(function (im, idx) { im.classList.toggle('hidden', idx !== gallCurrent); });
+          gallWrap.querySelectorAll('[data-gall-dot]').forEach(function (d, di) {
+            d.classList.toggle('opacity-100', di === gallCurrent);
+            d.classList.toggle('opacity-40', di !== gallCurrent);
+          });
+        }
+        var prev = gallWrap.querySelector('[data-gall-prev]');
+        var next = gallWrap.querySelector('[data-gall-next]');
+        if (prev) prev.addEventListener('click', function (e) { e.stopPropagation(); gallShow(gallCurrent - 1); });
+        if (next) next.addEventListener('click', function (e) { e.stopPropagation(); gallShow(gallCurrent + 1); });
+        gallWrap.querySelectorAll('[data-gall-dot]').forEach(function (dot) {
+          dot.addEventListener('click', function (e) { e.stopPropagation(); gallShow(parseInt(dot.dataset.gallDot, 10)); });
+        });
+        var touchStartX = null, touchStartY = null;
+        gallWrap.addEventListener('touchstart', function (e) {
+          if (e.touches.length === 1) { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }
+        }, { passive: true });
+        gallWrap.addEventListener('touchend', function (e) {
+          if (touchStartX === null) return;
+          var dx = e.changedTouches[0].clientX - touchStartX;
+          var dy = e.changedTouches[0].clientY - touchStartY;
+          if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) {
+            gallShow(gallCurrent + (dx < 0 ? 1 : -1));
+          }
+          touchStartX = null; touchStartY = null;
+        }, { passive: true });
+      }
 
       if (!outOfStock) {
         document.getElementById('pd-add-cart').addEventListener('click', function () {
@@ -1543,6 +1590,43 @@
       reader.readAsDataURL(file);
     }
 
+    /* --- Dodatkowe zdjęcia produktu (galeria) --- */
+    let productPhotos = []; // tablica data-url zdjęć
+
+    function renderPhotoPreviews() {
+      const box = document.getElementById('product-photos-preview');
+      const hidden = document.getElementById('product-photos-data');
+      if (!box) return;
+      box.innerHTML = '';
+      productPhotos.forEach(function (src, idx) {
+        var wrap = document.createElement('div');
+        wrap.className = 'relative w-16 h-16 rounded-lg overflow-hidden bg-black/40 border border-white/10';
+        wrap.innerHTML = '<img src="' + esc(src) + '" class="w-full h-full object-cover" alt="" />' +
+          '<button type="button" data-photo-del="' + idx + '" class="absolute top-0 right-0 w-5 h-5 bg-red-500/80 text-white text-xs font-bold flex items-center justify-center hover:bg-red-600">×</button>';
+        box.appendChild(wrap);
+      });
+      if (hidden) hidden.value = JSON.stringify(productPhotos);
+    }
+
+    function handlePhotosSelect(e) {
+      var files = Array.prototype.slice.call(e.target.files);
+      if (files.length === 0) return;
+      var pending = files.length;
+      files.forEach(function (file) {
+        if (!file.type || file.type.indexOf('image/') !== 0) { pending--; return; }
+        var maxSizeMB = 8;
+        if (file.size > maxSizeMB * 1024 * 1024) { pending--; alert(file.name + ' — za duży plik (max ' + maxSizeMB + ' MB).'); return; }
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+          productPhotos.push(ev.target.result);
+          pending--;
+          if (pending === 0) { renderPhotoPreviews(); e.target.value = ''; }
+        };
+        reader.onerror = function () { pending--; };
+        reader.readAsDataURL(file);
+      });
+    }
+
     /* --- Bundle UI (zarządzanie pozycjami zestawu) --- */
     let bundleItems = []; // [{productId, qty}]
 
@@ -1637,6 +1721,13 @@
       document.getElementById('product-stock').value = p.stock || 0;
       document.getElementById('product-whistle-freq').value = Array.isArray(p.whistleFreq) ? p.whistleFreq.join(', ') : (p.whistleFreq || '');
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
+      var savedColor = p.color || 'czekolada';
+      document.getElementById('product-color').value = savedColor;
+      if (window.__setModelColor) {
+        window.__setModelColor(savedColor, true);
+      }
+      productPhotos = (p.photos && Array.isArray(p.photos)) ? p.photos.slice() : [];
+      renderPhotoPreviews();
       document.getElementById('product-author-link').value = p.authorLink || '';
       document.getElementById('product-bundle').checked = !!(p.bundle && p.bundle.items);
       bundleItems = (p.bundle && p.bundle.items) ? JSON.parse(JSON.stringify(p.bundle.items)) : [];
@@ -1678,6 +1769,7 @@
       const printTimeSec = (parseInt(document.getElementById('product-print-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-print-time-m').value, 10) || 0) * 60;
       const manualTimeSec = (parseInt(document.getElementById('product-manual-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-manual-time-m').value, 10) || 0) * 60;
       const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
+      const productColor = document.getElementById('product-color').value || 'czekolada';
       const imageDataUrl = document.getElementById('product-image-data').value;
       const whistleRaw = document.getElementById('product-whistle-freq').value.trim();
       const whistleFreq = whistleRaw ? whistleRaw.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v) && v > 0; }) : [];
@@ -1692,12 +1784,13 @@
         bundle = { items: bundleItems.slice() };
       }
       const authorLink = document.getElementById('product-author-link').value.trim() || '';
+      const photos = productPhotos.slice();
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
       if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) — jest wymagany (z niego powstaje miniaturka).'); return; }
       if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
 
-      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink };
+      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink, color: productColor, photos: photos };
 
       if (editingProductId) {
         if (imageDataUrl) {
@@ -1735,6 +1828,10 @@
       if (rotc3) rotc3.classList.add('hidden');
       document.getElementById('product-model-data').value = '';
       document.getElementById('product-model-info').textContent = '';
+      document.getElementById('product-color').value = 'czekolada';
+      if (window.__setModelColor) window.__setModelColor('czekolada', true);
+      productPhotos = [];
+      renderPhotoPreviews();
       resetBundleUI();
       document.getElementById('admin-form-title').textContent = 'Dodaj nowy produkt';
       document.getElementById('admin-form-reset').textContent = 'Wyczyść';
@@ -2099,6 +2196,14 @@
       document.getElementById('settings-form').addEventListener('submit', handleSettingsSubmit);
       document.getElementById('admin-product-form').addEventListener('submit', handleProductSubmit);
       document.getElementById('product-model').addEventListener('change', handleModelSelect);
+      document.getElementById('product-photos').addEventListener('change', handlePhotosSelect);
+      document.getElementById('product-photos-preview').addEventListener('click', function (e) {
+        var del = e.target.closest('[data-photo-del]');
+        if (del) {
+          productPhotos.splice(parseInt(del.dataset.photoDel, 10), 1);
+          renderPhotoPreviews();
+        }
+      });
       document.getElementById('admin-logout').addEventListener('click', adminLogout);
 
       // Zamykanie modali po kliknięciu w tło
@@ -2491,6 +2596,7 @@
             <div>
               <label class="block text-sm text-slate-400 mb-1">Miniaturka (generuje się automatycznie z modelu 3D)</label>
               <input id="product-image-data" type="hidden" value="" />
+              <input id="product-color" type="hidden" value="czekolada" />
               <img id="product-image-preview" alt="Podgląd miniaturki" class="hidden mt-3 max-h-40 rounded-xl object-cover" />
               <p id="product-image-info" class="text-xs text-slate-500 mt-1"></p>
               <button id="refresh-thumb-btn" type="button"
@@ -2547,6 +2653,19 @@
                   <button type="button" id="download-thumb-btn"
                     class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Pobierz PNG</button>
                 </div>
+                <label class="block text-xs text-slate-500 mt-3 mb-1">Kolor modelu</label>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" data-model-color="przezroczysty" title="Przezroczysty (biały)"
+                    class="color-swatch rounded-full w-8 h-8 border border-white/20 ring-accent" style="background:#ffffff"></button>
+                  <button type="button" data-model-color="czekolada" title="Czekolada"
+                    class="color-swatch rounded-full w-8 h-8 border border-white/20 ring-accent" style="background:#8b5a2b"></button>
+                  <button type="button" data-model-color="granatowy" title="Granatowy"
+                    class="color-swatch rounded-full w-8 h-8 border border-white/20 ring-accent" style="background:#1a2b6d"></button>
+                  <button type="button" data-model-color="czarny" title="Czarny"
+                    class="color-swatch rounded-full w-8 h-8 border border-white/20 ring-accent" style="background:#1a1a1a"></button>
+                  <button type="button" data-model-color="szary" title="Szary"
+                    class="color-swatch rounded-full w-8 h-8 border border-white/20 ring-accent" style="background:#9aa0a6"></button>
+                </div>
               </div>
             </div>
             <div>
@@ -2555,6 +2674,14 @@
                 class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
               <input id="product-model-data" type="hidden" value="" />
               <p id="product-model-info" class="text-xs text-slate-500 mt-1"></p>
+            </div>
+            <div>
+              <label class="block text-sm text-slate-400 mb-1">Dodatkowe zdjęcia (opcjonalnie)</label>
+              <input id="product-photos" type="file" accept="image/*" multiple
+                class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
+              <input id="product-photos-data" type="hidden" value="" />
+              <div id="product-photos-preview" class="flex flex-wrap gap-2 mt-2"></div>
+              <p class="text-xs text-slate-500 mt-1">Miniaturka produktu to obrazek z modelu 3D. Te zdjęcia dodasz do galerii przeglądanej na podstronie oferty.</p>
             </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Link do modelu autora (opcjonalnie)</label>
@@ -2653,11 +2780,19 @@
       const ab = bytesToArrayBuffer(bytes);
       if (fmt === 'stl') {
         const geom = new STLLoader().parse(ab);
-        const mat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, metalness: 0.15, roughness: 0.65 });
+        const mat = new THREE.MeshStandardMaterial({ color: modelColor, metalness: 0.15, roughness: 0.65 });
         return Promise.resolve(new THREE.Mesh(geom, mat));
       }
       return new Promise((resolve, reject) => {
-        new ThreeMFLoader().parse(ab, '', resolve, reject);
+        const loader = new ThreeMFLoader();
+        loader.parse(ab, '', (obj) => {
+          obj.traverse((child) => {
+            if (child.isMesh) {
+              child.material = new THREE.MeshStandardMaterial({ color: modelColor, metalness: 0.15, roughness: 0.65 });
+            }
+          });
+          resolve(obj);
+        }, reject);
       });
     }
 
@@ -2692,6 +2827,14 @@
     let manualX = 0;
     let manualY = 0;
     let autoCenter = true;
+    let modelColor = 0x8b5a2b;   // domyślny kolor modelu (czekolada)
+    const COLOR_PRESETS = {
+      'przezroczysty': 0xffffff,
+      'czekolada': 0x8b5a2b,
+      'granatowy': 0x1a2b6d,
+      'czarny': 0x1a1a1a,
+      'szary': 0x9aa0a6
+    };
     const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartości
     let sharedRenderer = null;
     let sharedEnvTex = null;
@@ -2976,12 +3119,30 @@
     const dlBtn = document.getElementById('download-thumb-btn');
     if (dlBtn) dlBtn.addEventListener('click', window.__downloadThumb);
 
+    // Ustawianie koloru modelu (preset) i ponowne wygenerowanie miniaturki
+    window.__setModelColor = function (key, silent) {
+      if (COLOR_PRESETS.hasOwnProperty(key)) modelColor = COLOR_PRESETS[key];
+      const h = document.getElementById('product-color');
+      if (h && COLOR_PRESETS.hasOwnProperty(key)) h.value = key;
+      document.querySelectorAll('[data-model-color]').forEach(function (b) {
+        const active = b.dataset.modelColor === key;
+        b.classList.toggle('ring-2', active);
+        b.classList.toggle('ring-offset-2', active);
+      });
+      if (!silent) refreshFromStored();
+    };
+    const colorBtns = document.querySelectorAll('[data-model-color]');
+    colorBtns.forEach(function (b) {
+      b.addEventListener('click', function () { window.__setModelColor(this.dataset.modelColor); });
+    });
+
     loadView();
     syncViewUI();
     saveView();
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
+    window.__getModelColor = function () { return modelColor; };
   </script>
 
 </body>
