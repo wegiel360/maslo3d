@@ -2563,6 +2563,20 @@
                   <input id="auto-center-toggle" type="checkbox" checked class="accent-accent" />
                   <span class="text-xs text-slate-500">Auto wyśrodkowanie</span>
                 </label>
+                <label for="center-x" class="block text-xs text-slate-500 mt-3 mb-1">Ręczne przesunięcie X (<span id="center-x-value">0</span>%)</label>
+                <input id="center-x" type="range" min="-100" max="100" step="1" value="0"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setCenter('x', this.value)" />
+                <label for="center-y" class="block text-xs text-slate-500 mt-3 mb-1">Ręczne przesunięcie Y (<span id="center-y-value">0</span>%)</label>
+                <input id="center-y" type="range" min="-100" max="100" step="1" value="0"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setCenter('y', this.value)" />
+                <div class="flex gap-3 mt-3">
+                  <button type="button" id="reset-view-btn"
+                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Reset widoku</button>
+                  <button type="button" id="download-thumb-btn"
+                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Pobierz PNG</button>
+                </div>
               </div>
             </div>
             <div>
@@ -2705,27 +2719,36 @@
     let currentView = 'iso';
     let currentFov = 45;
     let sizeFactor = 1;
+    let manualX = 0;
+    let manualY = 0;
     let autoCenter = true;
     const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartości
+    let sharedRenderer = null;
+    let sharedEnvTex = null;
+    let sharedBg = null;
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
 
       const scene = new THREE.Scene();
-      const bgTex = await new THREE.TextureLoader().loadAsync('bg.jpg');
-      bgTex.colorSpace = THREE.SRGBColorSpace;
-      scene.background = bgTex;
 
       scene.add(new THREE.AmbientLight(0xffffff, 0.7));
       const dlight = new THREE.DirectionalLight(0xffffff, 1.2);
       dlight.position.set(6, 12, 8);
       scene.add(dlight);
 
-      const renderer = new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
+      const renderer = sharedRenderer || new THREE.WebGLRenderer({ preserveDrawingBuffer: true, antialias: true });
       renderer.outputColorSpace = THREE.SRGBColorSpace;
       renderer.setPixelRatio(1);
       renderer.setSize(400, 400);
-      scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+      if (!sharedRenderer) {
+        sharedRenderer = renderer;
+        sharedEnvTex = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+        sharedBg = await new THREE.TextureLoader().loadAsync('bg.jpg');
+        sharedBg.colorSpace = THREE.SRGBColorSpace;
+      }
+      scene.environment = sharedEnvTex;
+      scene.background = sharedBg;
 
       // Wyśrodkowanie modelu wokół początku układu (rotacja wokół środka)
       scene.add(product);
@@ -2780,7 +2803,16 @@
       camera.near = renderDist / 1000;
       camera.far = renderDist * 1000;
       camera.updateProjectionMatrix();
-      camera.lookAt(c2);
+      // Manual offset X/Y (procent kadru) - przesunięcie punktu lookAt
+      if (manualX !== 0 || manualY !== 0) {
+        const halfFrame = renderDist * Math.tan(deg2rad(currentFov) / 2);
+        const look = c2.clone()
+          .add(right.clone().multiplyScalar((manualX / 100) * halfFrame))
+          .add(upB.clone().multiplyScalar((manualY / 100) * halfFrame));
+        camera.lookAt(look);
+      } else {
+        camera.lookAt(c2);
+      }
 
       renderer.render(scene, camera);
 
@@ -2812,7 +2844,6 @@
       info.classList.remove('text-amber-400');
       info.classList.add('text-slate-500');
 
-      renderer.dispose();
       return b122;
     }
 
@@ -2844,6 +2875,7 @@
     function selectView(view) {
       currentView = view;
       refreshFromStored();
+      saveView();
     }
     window.__setView = function (v) { selectView(v); };
     const viewSelect = document.getElementById('view-presets');
@@ -2857,6 +2889,7 @@
       if (lbl) lbl.textContent = Math.round(currentFov);
       clearTimeout(fovTimer);
       fovTimer = setTimeout(refreshFromStored, 200); // debounce -> mniej lagu
+      saveView();
     }
     window.__setFov = function (v) { setFov(v); };
     const fovSlider = document.getElementById('fov-slider');
@@ -2870,6 +2903,7 @@
       if (slbl) slbl.textContent = Math.round(sizeFactor * 100);
       clearTimeout(sizeTimer);
       sizeTimer = setTimeout(refreshFromStored, 200); // debounce
+      saveView();
     }
     window.__setSize = function (v) { setSize(v); };
     const sizeSlider = document.getElementById('size-slider');
@@ -2880,7 +2914,104 @@
     if (autoCenterToggle) autoCenterToggle.addEventListener('change', function () {
       autoCenter = this.checked;
       refreshFromStored();
+      saveView();
     });
+
+    // Manualne centrowanie X/Y (przesunięcie punktu patrzenia w % kadru)
+    window.__setCenter = function (axis, val) {
+      if (axis === 'x') manualX = parseFloat(val) || 0;
+      else manualY = parseFloat(val) || 0;
+      const xLbl = document.getElementById('center-x-value');
+      const yLbl = document.getElementById('center-y-value');
+      if (xLbl) xLbl.textContent = Math.round(manualX);
+      if (yLbl) yLbl.textContent = Math.round(manualY);
+      refreshFromStored();
+      saveView();
+    };
+
+    // Zapamiętywanie ustawień widoku w localStorage
+    const VIEW_KEY = 'maslo3d_view';
+    function saveView() {
+      try {
+        const viewData = {
+          view: currentView,
+          fov: currentFov,
+          size: sizeFactor * 100,
+          manualX: manualX,
+          manualY: manualY,
+          autoCenter: autoCenter
+        };
+        localStorage.setItem(VIEW_KEY, JSON.stringify(viewData));
+      } catch (e) { /* localStorage niedostępny - ignoruj */ }
+    }
+    function loadView() {
+      try {
+        const saved = localStorage.getItem(VIEW_KEY);
+        if (!saved) return;
+        const data = JSON.parse(saved);
+        currentView = data.view || 'iso';
+        currentFov = data.fov || 45;
+        sizeFactor = (data.size || 100) / 100;
+        manualX = data.manualX || 0;
+        manualY = data.manualY || 0;
+        autoCenter = data.autoCenter !== false;
+      } catch (e) { /* uszkodzony zapis - używamy domyślnych */ }
+    }
+    function syncViewUI() {
+      const viewSelect = document.getElementById('view-presets');
+      if (viewSelect) viewSelect.value = currentView;
+      const fovSlider = document.getElementById('fov-slider');
+      if (fovSlider) fovSlider.value = Math.round(currentFov);
+      const fovLbl = document.getElementById('fov-value');
+      if (fovLbl) fovLbl.textContent = Math.round(currentFov);
+      const sizeSlider = document.getElementById('size-slider');
+      if (sizeSlider) sizeSlider.value = Math.round(sizeFactor * 100);
+      const sizeLbl = document.getElementById('size-value');
+      if (sizeLbl) sizeLbl.textContent = Math.round(sizeFactor * 100);
+      const cx = document.getElementById('center-x');
+      if (cx) cx.value = Math.round(manualX);
+      const cxLbl = document.getElementById('center-x-value');
+      if (cxLbl) cxLbl.textContent = Math.round(manualX);
+      const cy = document.getElementById('center-y');
+      if (cy) cy.value = Math.round(manualY);
+      const cyLbl = document.getElementById('center-y-value');
+      if (cyLbl) cyLbl.textContent = Math.round(manualY);
+      const toggle = document.getElementById('auto-center-toggle');
+      if (toggle) toggle.checked = autoCenter;
+    }
+
+    // Reset widoku do ustawień domyślnych
+    window.__resetView = function () {
+      currentView = 'iso';
+      currentFov = 45;
+      sizeFactor = 1;
+      manualX = 0;
+      manualY = 0;
+      autoCenter = true;
+      syncViewUI();
+      refreshFromStored();
+      saveView();
+    };
+    const resetBtn = document.getElementById('reset-view-btn');
+    if (resetBtn) resetBtn.addEventListener('click', window.__resetView);
+
+    // Pobieranie miniaturki jako PNG
+    window.__downloadThumb = function () {
+      const img = document.getElementById('product-image-preview');
+      if (!img || !img.getAttribute('src')) return;
+      const a = document.createElement('a');
+      a.href = img.src;
+      a.download = 'maslo3d_' + (currentView || 'view') + '.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    };
+    const dlBtn = document.getElementById('download-thumb-btn');
+    if (dlBtn) dlBtn.addEventListener('click', window.__downloadThumb);
+
+    loadView();
+    syncViewUI();
+    saveView();
 
     // Elegancka obsługa błędu przy automatycznym generowaniu
     window.generateModelThumbnail = generateModelThumbnail;
