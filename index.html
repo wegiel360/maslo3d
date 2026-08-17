@@ -294,6 +294,32 @@
       try { return base122ToImgDataURL(val); } catch (e) { return ''; }
     }
 
+    // Zasoby z assets.json (tła SVG + obrazy drukarek). Ładowane raz, cache w window.__assets.
+    let __assets = null;
+    function loadAssets() {
+      if (__assets) return Promise.resolve(__assets);
+      return fetch('assets.json')
+        .then(function (r) { if (!r.ok) throw new Error('assets.json ' + r.status); return r.json(); })
+        .then(function (data) { __assets = data; return data; });
+    }
+    // Zwraca blob-URL obrazu z assets.json (img) dla danego klucza. MIME wg rozszerzenia źródła.
+    function assetsImg(key) {
+      if (!__assets || !__assets.img || !__assets.img[key]) return '';
+      try {
+        var bytes = base122_decode(__assets.img[key]);
+        return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
+      } catch (e) { return ''; }
+    }
+    // Które drukarki aktualnie drukują (na podstawie zamówień ze statusem 'Drukuje się').
+    function activePrinters() {
+      var active = {};
+      Object.values(orders).forEach(function (o) {
+        if (!o || o.isDeleted || o.status !== 'Drukuje się') return;
+        if (o.printer && PRINTERS[o.printer]) active[o.printer] = true;
+      });
+      return active;
+    }
+
     // Base122 -> Uint8Array (do pobierania modeli 3D jako blob)
     // Obsługuje też legacy data: URL (base64)
     function base122ToBinary(val) {
@@ -344,6 +370,17 @@
     // Krok koszyka: 1=lista, 2=zamówienie, 3=kolejka
     let cartStep = 1;
     let lastOrderData = null; // dane ostatnio złożonego zamówienia (dla kroku 3)
+
+    // Drukarki pokazywane na stronie głównej nad ofertami.
+    // Konfiguracja: name = nazwa, imgKey = klucz obrazu w assets.json (img),
+    // enabled = czy drukarka ma być widoczna. Aby później usunąć drukarkę,
+    // ustaw enabled:false (obraz i kod zostają) albo usuń wpis.
+    // Aby wymienić obrazek "zapytanie" na realny, dodaj nowy klucz w assets.json (img)
+    // i wpisz go tutaj w imgKey, a następnie zaktualizuj name.
+    const PRINTERS = {
+      makerbot: { name: 'Makerbot Sketch', imgKey: 'printer-makerbot', enabled: true },
+      bambus: { name: 'Codename Bambus', imgKey: 'printer-bambus', enabled: true }
+    };
 
     // Klucz do przechowywania koszyka w localStorage
     const CART_KEY = 'maslo3d_cart';
@@ -769,6 +806,70 @@
 
         grid.appendChild(card);
       });
+
+      renderPrinters();
+    }
+
+    // Render sekcji drukarek (dwóch kart) na stronie głównej nad ofertami.
+    function renderPrinters() {
+      const wrap = document.getElementById('printer-section');
+      if (!wrap) return;
+      const active = activePrinters();
+      const enabled = Object.keys(PRINTERS).filter(function (k) { return PRINTERS[k].enabled; });
+      if (enabled.length === 0) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      wrap.innerHTML = enabled.map(function (key) {
+        const pr = PRINTERS[key];
+        const isActive = !!active[key];
+        return '<div class="bg-panel border border-white/10 rounded-2xl overflow-hidden shadow-lg flex flex-col items-center p-4 relative">' +
+          (isActive
+            ? '<span class="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 animate-pulse z-10">Drukowanie…</span>'
+            : '') +
+          '<div data-printer-img="' + key + '" class="w-full h-40 rounded-xl overflow-hidden bg-black/30 flex items-center justify-center mb-3">' +
+          '  <img class="max-h-full max-w-full object-contain" alt="' + esc(pr.name) + '" />' +
+          '</div>' +
+          '<p class="text-sm font-semibold text-white">' + esc(pr.name) + '</p>' +
+          (isActive ? '<p class="text-xs text-emerald-300 mt-0.5">Wydruk w toku</p>' : '<p class="text-xs text-slate-500 mt-0.5">Wolna</p>') +
+          '</div>';
+      }).join('');
+      // Po wstawieniu HTML wstawiamy obrazy (blob-URL z assets.json)
+      wrap.querySelectorAll('[data-printer-img]').forEach(function (holder) {
+        const key = holder.dataset.printerImg;
+        const url = assetsImg(PRINTERS[key].imgKey);
+        if (url) holder.firstElementChild.src = url;
+      });
+      scheduleShake(active);
+    }
+
+    // JS rAF: stale nasilanie "trzęsienia" aktywnych drukarek (transform) — pętla tylko gdy aktywna.
+    let shakeRaf = null;
+    let shakeActive = {};
+    function scheduleShake(active) {
+      shakeActive = active || {};
+      const hasActive = Object.keys(shakeActive).some(function (k) { return shakeActive[k]; });
+      if (hasActive && !shakeRaf) {
+        shakeRaf = requestAnimationFrame(shakeLoop);
+      } else if (!hasActive && shakeRaf) {
+        cancelAnimationFrame(shakeRaf);
+        shakeRaf = null;
+      }
+    }
+    function shakeLoop() {
+      var wrap = document.getElementById('printer-section');
+      if (wrap) {
+        wrap.querySelectorAll('[data-printer-img]').forEach(function (holder) {
+          var key = holder.dataset.printerImg;
+          var img = holder.firstElementChild;
+          if (!img) return;
+          if (shakeActive[key]) {
+            var t = (Date.now() % 200) / 1000;
+            var dx = Math.round(Math.sin(t * 62.83) * 2);
+            var dy = Math.round(Math.cos(t * 50.27) * 1) % 2;
+            img.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+          }
+        });
+      }
+      shakeRaf = requestAnimationFrame(shakeLoop);
     }
 
     /* --- Podstrona produktu --- */
@@ -1344,6 +1445,9 @@
         '      </div>' +
         '      <span class="text-sm font-bold ' + statusColor(order.status).split(' ')[0] + '">' + esc(order.status) + '</span>' +
         '    </div>' +
+        (order.status === 'Drukuje się' && order.printer && PRINTERS[order.printer]
+          ? '<p class="mt-2 text-sm text-emerald-300">Drukuje na: <strong>' + esc(PRINTERS[order.printer].name) + '</strong></p>'
+          : '') +
         '    <div class="mt-3 border-t border-white/10 pt-3 text-sm">' +
         itemsHtml +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Dostawa</span><span class="text-white">' + esc(order.delivery || 'Szkoła') + '</span></div>' +
@@ -1933,14 +2037,14 @@
       });
 
       if (active.length === 0) {
-        tbody.innerHTML += '<tr><td colspan="9" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
+        tbody.innerHTML += '<tr><td colspan="10" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
       } else {
         active.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
       }
 
       if (archived.length > 0) {
         tbody.innerHTML +=
-          '<tr class="border-t border-white/10"><td colspan="9" class="pt-6 pb-2">' +
+          '<tr class="border-t border-white/10"><td colspan="10" class="pt-6 pb-2">' +
           '  <p class="text-xs uppercase tracking-wide text-slate-500 font-bold">Archiwum (anulowane / usunięte)</p>' +
           '</td></tr>';
         archived.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, true)); });
@@ -1977,6 +2081,16 @@
           ? '<span class="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-2 py-1">Anulowane</span>' +
             (o.deleteReason ? '<p class="text-xs text-slate-500 mt-1">' + esc(o.deleteReason) + '</p>' : '')
           : '<select data-status-id="' + id + '" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center">' + statusOptions + '</select>') +
+        '</td>' +
+        '<td class="py-3 px-3">' +
+        (isArchived
+          ? '<span class="text-xs text-slate-500">—</span>'
+          : '<select data-printer-id="' + id + '" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center">' +
+            '<option value=""' + (!o.printer ? ' selected' : '') + '>—</option>' +
+            Object.keys(PRINTERS).filter(function (k) { return PRINTERS[k].enabled; }).map(function (k) {
+              return '<option value="' + k + '"' + (o.printer === k ? ' selected' : '') + '>' + esc(PRINTERS[k].name) + '</option>';
+            }).join('') +
+            '</select>') +
         '</td>' +
         '<td class="py-3 px-3">' +
         (isArchived
@@ -2210,6 +2324,14 @@
               .catch(function (er) { alert('Błąd: ' + er.message); });
             return;
           }
+          sel = e.target.closest('[data-printer-id]');
+          if (sel) {
+            var pid = sel.dataset.printerId;
+            db.collection('orders').doc(pid).update({ printer: sel.value })
+              .then(function () { flash('Drukarka zapisana.'); })
+              .catch(function (er) { alert('Błąd: ' + er.message); });
+            return;
+          }
         });
         var estimateTimers = {};
         ordersTbody.addEventListener('input', function (e) {
@@ -2245,6 +2367,8 @@
       startListeners();
       setupEventDelegation();
       route();
+      // Zasoby (tła SVG + obrazy drukarek) — po załadowaniu odśwież sekcję drukarek
+      loadAssets().then(function () { renderPrinters(); }).catch(function (e) { console.error('assets:', e); });
 
       // Sklep
       document.getElementById('cart-open').addEventListener('click', openCart);
@@ -2317,6 +2441,11 @@
       <div id="shop-banner"
         class="hidden text-sm font-medium text-amber-200 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-3"></div>
     </div>
+
+    <!-- SEKCJA DRUKAREK -->
+    <section class="max-w-6xl mx-auto px-4 pt-6">
+      <div id="printer-section" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4"></div>
+    </section>
 
     <main class="max-w-6xl mx-auto px-4 py-8">
       <section class="text-center mb-10">
