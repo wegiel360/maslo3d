@@ -31,9 +31,9 @@ System zamówień wydruków 3D dla szkoły. Aplikacja jednoplikowa (`index.html`
 ```
 maslo3d/
 ├── index.html          # cała aplikacja
+├── assets.json         # tła SVG (Base122) dobierane do proporcji ekranu
 ├── firestore.rules     # reguły Firestore (publiczne)
 ├── firebase.json       # konfiguracja Firebase CLI
 ├── logo.png            # logo
-├── bg.jpg              # tło
 └── favicon.ico
 ```
