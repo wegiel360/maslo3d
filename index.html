@@ -302,11 +302,41 @@
         .then(function (r) { if (!r.ok) throw new Error('assets.json ' + r.status); return r.json(); })
         .then(function (data) { __assets = data; return data; });
     }
+    // Dekoder Base122 w formacie kevinAlbs (assets.json: tła SVG + obrazy drukarek).
+    // Różni się od base122_decode (własny chunked) — assets.json koduje encodeAssets.mjs
+    // referencyjnym codec kevinAlbs. Identyczny z decodeB122 z nagłówka (bez trailing-push).
+    const B122_ILLEGALS = [0, 10, 13, 34, 38, 92]; // null, newline, CR, ", &, \
+    function base122DecodeRef(str) {
+      if (!str) return new Uint8Array(0);
+      const decoded = [];
+      let curByte = 0, bitOfByte = 0;
+      function push7(byte) {
+        byte <<= 1;
+        curByte |= (byte >>> bitOfByte);
+        bitOfByte += 7;
+        if (bitOfByte >= 8) {
+          decoded.push(curByte);
+          bitOfByte -= 8;
+          curByte = (byte << (7 - bitOfByte)) & 255;
+        }
+      }
+      for (let i = 0; i < str.length; i++) {
+        const c = str.charCodeAt(i);
+        if (c > 127) {
+          const illegalIndex = (c >>> 8) & 7;
+          if (illegalIndex !== 7) push7(B122_ILLEGALS[illegalIndex]);
+          push7(c & 127);
+        } else {
+          push7(c);
+        }
+      }
+      return new Uint8Array(decoded);
+    }
     // Zwraca blob-URL obrazu z assets.json (img) dla danego klucza. MIME wg rozszerzenia źródła.
     function assetsImg(key) {
       if (!__assets || !__assets.img || !__assets.img[key]) return '';
       try {
-        var bytes = base122_decode(__assets.img[key]);
+        var bytes = base122DecodeRef(__assets.img[key]);
         return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
       } catch (e) { return ''; }
     }
@@ -379,7 +409,7 @@
     // i wpisz go tutaj w imgKey, a następnie zaktualizuj name.
     const PRINTERS = {
       makerbot: { name: 'Makerbot Sketch', imgKey: 'printer-makerbot', enabled: true },
-      bambus: { name: 'Codename Bambus', imgKey: 'printer-bambus', enabled: true }
+      bambus: { name: 'Bambus', imgKey: 'printer-bambus', enabled: true }
     };
 
     // Klucz do przechowywania koszyka w localStorage
@@ -821,15 +851,17 @@
       wrap.innerHTML = enabled.map(function (key) {
         const pr = PRINTERS[key];
         const isActive = !!active[key];
-        return '<div class="bg-panel border border-white/10 rounded-2xl overflow-hidden shadow-lg flex flex-col items-center p-4 relative">' +
+        return '<div class="flex flex-col items-center gap-3 py-2">' +
+          // Wyśrodkowana pigułka nad drukarką: nazwa + status
+          '<div class="px-4 py-1.5 rounded-full border text-sm font-semibold shrink-0 ' +
           (isActive
-            ? '<span class="absolute top-2 left-1/2 -translate-x-1/2 text-xs font-bold text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 animate-pulse z-10">Drukowanie…</span>'
-            : '') +
-          '<div data-printer-img="' + key + '" class="w-full h-40 rounded-xl overflow-hidden bg-black/30 flex items-center justify-center mb-3">' +
-          '  <img class="max-h-full max-w-full object-contain" alt="' + esc(pr.name) + '" />' +
+            ? 'text-emerald-300 bg-emerald-400/10 border-emerald-400/30 animate-pulse'
+            : 'text-slate-300 bg-slate-500/5 border-white/10') + '">' +
+          esc(pr.name) + (isActive ? ' · Drukowanie…' : ' · Wolna') +
           '</div>' +
-          '<p class="text-sm font-semibold text-white">' + esc(pr.name) + '</p>' +
-          (isActive ? '<p class="text-xs text-emerald-300 mt-0.5">Wydruk w toku</p>' : '<p class="text-xs text-slate-500 mt-0.5">Wolna</p>') +
+          '<div data-printer-img="' + key + '" class="w-40 h-40 flex items-center justify-center">' +
+          '  <img class="max-h-full max-w-full object-contain drop-shadow-lg" alt="' + esc(pr.name) + '" />' +
+          '</div>' +
           '</div>';
       }).join('');
       // Po wstawieniu HTML wstawiamy obrazy (blob-URL z assets.json)
@@ -894,7 +926,7 @@
         var s = imageSrcFor(ph);
         if (s && s.length > 20) galleryImages.push(s);
       });
-      var isWhistle = p.tags && p.tags.indexOf('whistle') !== -1 && p.whistleFreq;
+      var isWhistle = p.whistleFreq && (p.tags ? p.tags.indexOf('whistle') !== -1 || p.tags.indexOf('gwizdek') !== -1 : true);
       var isBundle = !!(p.bundle && p.bundle.items);
       var outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
 
@@ -3118,15 +3150,49 @@
 
       renderer.render(scene, camera);
 
-      // Zapis 400px jako AVIF/PNG -> Base122
+      // Zapis 400px jako PNG -> Base122 (z przycięciem przezroczystych marginesów)
       const out = document.createElement('canvas');
       out.width = 400; out.height = 400;
       const octx = out.getContext('2d');
       octx.drawImage(renderer.domElement, 0, 0, 400, 400);
 
+      // Auto-trim: znajdź bbox nieprzezroczystych pikseli (alpha > 8) i przyetnij
+      // przezroczyste marginesy z ~2% dodatkiem, dopasowując canvas do kadru.
+      let crop = { x: 0, y: 0, w: 400, h: 400 };
+      try {
+        const imgData = octx.getImageData(0, 0, 400, 400);
+        const px = imgData.data;
+        let minX = 400, minY = 400, maxX = -1, maxY = -1;
+        for (let y = 0; y < 400; y++) {
+          for (let x = 0; x < 400; x++) {
+            if (px[(y * 400 + x) * 4 + 3] > 8) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+            }
+          }
+        }
+        if (maxX >= 0) {
+          const pad = 0.02 * Math.max(maxX - minX + 1, maxY - minY + 1);
+          minX = Math.max(0, Math.floor(minX - pad));
+          minY = Math.max(0, Math.floor(minY - pad));
+          maxX = Math.min(399, Math.ceil(maxX + pad));
+          maxY = Math.min(399, Math.ceil(maxY + pad));
+          crop = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+        }
+      } catch (e) { /* zostaw pełny kadr */ }
+
+      let cropped = out;
+      if (crop.w < 400 || crop.h < 400) {
+        cropped = document.createElement('canvas');
+        cropped.width = crop.w; cropped.height = crop.h;
+        const cctx = cropped.getContext('2d');
+        cctx.drawImage(out, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
+      }
       let dataUrl;
       try {
-        dataUrl = out.toDataURL('image/png', 0.85);
+        dataUrl = cropped.toDataURL('image/png', 0.85);
         if (!dataUrl || !dataUrl.startsWith('data:image/png')) throw new Error('no-png');
       } catch (e) {
         dataUrl = out.toDataURL('image/png');
