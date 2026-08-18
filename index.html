@@ -778,7 +778,8 @@
 
     /* --- Dźwięki strony: dzwonek przycisków (30%) + praca drukarek (20%) --- */
     var audioCtx = null, dingBuffer = null, runBuffer = null, clickSrc = null;
-    var started = false;
+    var audioUnlocked = false, lastTypeSound = 0;
+    var printerRunSound = {}; // key -> { src, gain }
     function ensureAudio() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -795,22 +796,50 @@
           .catch(function () {});
       });
     }
+    // Odblokowanie audio przy pierwszym geście (kliknięcie/pisanie) zamiast ekranu Start
+    function unlockAudio() {
+      if (audioUnlocked) return;
+      audioUnlocked = true;
+      ensureAudio();
+      loadSounds();
+      syncPrinterSounds(activePrinters());
+    }
+    // Dźwięki tylko na stronie głównej (brak ?o/?orderId/?p/?admin/&view=checkout)
+    function isShopView() {
+      var p = new URLSearchParams(window.location.search);
+      return !p.get('o') && !p.get('orderId') && !p.get('p') && p.get('admin') !== 'true' && p.get('view') !== 'checkout';
+    }
     function playClickSound() {
-      if (!audioCtx || !dingBuffer) return;
+      if (!isShopView() || !audioCtx || !dingBuffer) return;
       try {
         if (clickSrc) { try { clickSrc.stop(); } catch (e) {} }
         var src = audioCtx.createBufferSource();
         src.buffer = dingBuffer;
         var g = audioCtx.createGain();
-        g.gain.value = 0.3; // dzwonek na 30%
+        g.gain.value = 1.0; // dzwonek na 100%
         src.connect(g); g.connect(audioCtx.destination);
         src.start();
         clickSrc = src;
       } catch (e) {}
     }
-    var printerRunSound = {};
+    // Dzwonek przy pisaniu — lekko ograniczony (~80 ms)
+    function playTypeSound() {
+      var now = Date.now();
+      if (now - lastTypeSound < 80) return;
+      lastTypeSound = now;
+      playClickSound();
+    }
+    // Głośność pracy danej drukarki (suwak przy pigułce), zapis w localStorage
+    function volFor(key) {
+      var v = parseFloat(localStorage.getItem('maslo3d_printer_vol_' + key));
+      return isFinite(v) ? v : 0.2;
+    }
+    function setPrinterVolume(key, vol) {
+      localStorage.setItem('maslo3d_printer_vol_' + key, String(vol));
+      if (printerRunSound[key]) printerRunSound[key].gain.gain.value = vol;
+    }
     function syncPrinterSounds(active) {
-      if (!audioCtx || !runBuffer) return;
+      if (!isShopView() || !audioCtx || !runBuffer) return;
       Object.keys(printerRunSound).forEach(function (k) {
         if (!active || !active[k]) {
           try { printerRunSound[k].src.stop(); } catch (e) {}
@@ -824,28 +853,14 @@
           var src = audioCtx.createBufferSource();
           src.buffer = runBuffer; src.loop = true;
           var g = audioCtx.createGain();
-          g.gain.value = 0.2; // praca drukarki na 20%
+          g.gain.value = volFor(k); // domyślnie 20%
           src.connect(g); g.connect(audioCtx.destination);
           var off = idx * 2500; // kolejne drukarki przesunięte o kilka sekund
           src.start(off > 0 ? audioCtx.currentTime + (off / 1000) : 0);
-          printerRunSound[k] = { src: src };
+          printerRunSound[k] = { src: src, gain: g };
         }
         idx++;
       });
-    }
-    function startApp() {
-      started = true;
-      ensureAudio();
-      loadSounds();
-      document.getElementById('start-overlay').classList.add('hidden');
-    }
-    // Pokaż ekran Start tylko, gdy jakaś drukarka faktycznie drukuje (i nie kliknięto jeszcze Start)
-    function updateStartOverlay(active) {
-      var any = active && Object.keys(active).some(function (k) { return active[k]; });
-      var el = document.getElementById('start-overlay');
-      if (!el) return;
-      if (any && !started) el.classList.remove('hidden');
-      else el.classList.add('hidden');
     }
 
     /* --- Rozwijanie zestawów (bundles) w koszyku --- */
@@ -1218,7 +1233,6 @@
       if (!wrap) return;
       const active = activePrinters();
       syncPrinterSounds(active);
-      updateStartOverlay(active);
       const enabled = Object.keys(PRINTERS).filter(function (k) { return PRINTERS[k].enabled; });
       if (enabled.length === 0) { wrap.classList.add('hidden'); return; }
       wrap.classList.remove('hidden');
@@ -1233,6 +1247,9 @@
             : 'text-slate-300 bg-slate-500/5 border-white/10') + '">' +
           esc(pr.name) + (isActive ? ' · Drukowanie…' : ' · Wolna') +
           '</div>' +
+          '<label class="flex items-center gap-2 text-[10px] text-slate-400">' +
+          '  Głośność <input type="range" min="0" max="100" value="' + Math.round(volFor(key) * 100) + '" data-printer-vol="' + key + '" class="w-24 accent-accent" />' +
+          '</label>' +
           '<div data-printer-img="' + key + '" class="w-40 h-40 flex items-center justify-center">' +
           '  <img class="max-h-full max-w-full object-contain drop-shadow-lg" alt="' + esc(pr.name) + '" />' +
           '</div>' +
@@ -3021,11 +3038,28 @@
         }
       });
 
-      // Dzwonek przy klikaniu przycisków/linków (30%)
+      // Dzwonek przy klikaniu przycisków/linków (100%)
       document.addEventListener('click', function (e) {
         if (e.target.closest && e.target.closest('button, a, select, [role="button"], input[type="button"], input[type="submit"]')) {
+          unlockAudio();
           playClickSound();
         }
+      });
+
+      // Dzwonek podczas wpisywania tekstu (lekko ograniczony), tylko strony głównej
+      document.addEventListener('input', function (e) {
+        var t = e.target;
+        if (!t || !t.tagName) return;
+        var textTypes = { text: 1, search: 1, password: 1, email: 1, number: 1, tel: 1, url: 1 };
+        var isText = t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && textTypes[t.type || 'text']);
+        if (isText) { unlockAudio(); playTypeSound(); }
+      });
+
+      // Suwak głośności pracy drukarki (per pigułka)
+      var printerWrap = document.getElementById('printer-section');
+      if (printerWrap) printerWrap.addEventListener('input', function (e) {
+        var s = e.target.closest('[data-printer-vol]');
+        if (s) setPrinterVolume(s.dataset.printerVol, parseInt(s.value, 10) / 100);
       });
     }
 
@@ -3037,8 +3071,6 @@
       updateWishBadge();
       startListeners();
       setupEventDelegation();
-      var startBtn = document.getElementById('start-button');
-      if (startBtn) startBtn.addEventListener('click', startApp);
       route();
       renderCartStep(); // wypełnij sidebar (desktop) na start
       renderShopTagFilters();
@@ -4149,17 +4181,6 @@
         <div id="checkout-body"></div>
         <div id="checkout-footer" class="mt-4"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- ============ EKRAN START (powitalny, odblokowuje dźwięk) ============ -->
-  <div id="start-overlay" class="hidden fixed inset-0 z-[60] bg-base flex items-center justify-center p-6">
-    <div class="flex flex-col items-center text-center max-w-sm w-full">
-      <img src="logo.png" alt="Logo Masło3D" class="w-28 h-28 rounded-3xl object-cover shadow-2xl shadow-accent/20 mb-6" />
-      <h1 class="text-4xl font-bold text-white mb-2">Masło3D</h1>
-      <p class="text-slate-400 mb-8">Wydruki 3D · odbiór w szkole</p>
-      <button id="start-button" class="w-full py-4 rounded-2xl font-bold text-lg bg-accent hover:bg-sky-400 text-slate-900 shadow-2xl shadow-accent/30 transition-all">Start</button>
-      <p class="text-xs text-slate-500 mt-6">Kliknij, aby włączyć dźwięk</p>
     </div>
   </div>
 
