@@ -816,7 +816,7 @@
         var src = audioCtx.createBufferSource();
         src.buffer = dingBuffer;
         var g = audioCtx.createGain();
-        g.gain.value = 1.0; // dzwonek na 100%
+        g.gain.value = 0.5; // dzwonek na 50%
         src.connect(g); g.connect(audioCtx.destination);
         src.start();
         clickSrc = src;
