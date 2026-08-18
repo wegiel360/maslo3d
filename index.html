@@ -776,6 +776,76 @@
       } catch (e) {}
     }
 
+    /* --- Dźwięki strony: dzwonek przycisków (30%) + praca drukarek (20%) --- */
+    var audioCtx = null, dingBuffer = null, runBuffer = null, clickSrc = null;
+    var started = false;
+    function ensureAudio() {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+    function loadSounds() {
+      if (!audioCtx || (dingBuffer && runBuffer)) return;
+      var files = ['microwave-button-press-ding.mp3', 'microwave-running.ogg'];
+      files.forEach(function (file, i) {
+        fetch(file).then(function (r) { if (!r.ok) throw new Error(file + ' ' + r.status); return r.arrayBuffer(); })
+          .then(function (buf) { return audioCtx.decodeAudioData(buf); })
+          .then(function (decoded) {
+            if (i === 0) dingBuffer = decoded; else runBuffer = decoded;
+          })
+          .catch(function () {});
+      });
+    }
+    function playClickSound() {
+      if (!audioCtx || !dingBuffer) return;
+      try {
+        if (clickSrc) { try { clickSrc.stop(); } catch (e) {} }
+        var src = audioCtx.createBufferSource();
+        src.buffer = dingBuffer;
+        var g = audioCtx.createGain();
+        g.gain.value = 0.3; // dzwonek na 30%
+        src.connect(g); g.connect(audioCtx.destination);
+        src.start();
+        clickSrc = src;
+      } catch (e) {}
+    }
+    var printerRunSound = {};
+    function syncPrinterSounds(active) {
+      if (!audioCtx || !runBuffer) return;
+      Object.keys(printerRunSound).forEach(function (k) {
+        if (!active || !active[k]) {
+          try { printerRunSound[k].src.stop(); } catch (e) {}
+          delete printerRunSound[k];
+        }
+      });
+      var idx = 0;
+      Object.keys(active || {}).forEach(function (k) {
+        if (!active[k]) return;
+        if (!printerRunSound[k]) {
+          var src = audioCtx.createBufferSource();
+          src.buffer = runBuffer; src.loop = true;
+          var g = audioCtx.createGain();
+          g.gain.value = 0.2; // praca drukarki na 20%
+          src.connect(g); g.connect(audioCtx.destination);
+          var off = idx * 2500; // kolejne drukarki przesunięte o kilka sekund
+          src.start(off > 0 ? audioCtx.currentTime + (off / 1000) : 0);
+          printerRunSound[k] = { src: src };
+        }
+        idx++;
+      });
+    }
+    function startApp() {
+      started = true;
+      ensureAudio();
+      loadSounds();
+      document.getElementById('start-overlay').classList.add('hidden');
+    }
+    function hideStartOverlayIfNeeded() {
+      if (started) return;
+      var el = document.getElementById('start-overlay');
+      if (el) el.classList.add('hidden');
+      started = true;
+    }
+
     /* --- Rozwijanie zestawów (bundles) w koszyku --- */
     function expandBundles(items) {
       var out = [];
@@ -851,6 +921,9 @@
       const productId = params.get('p');
       const isAdmin = params.get('admin') === 'true';
       const view = params.get('view');
+
+      // Ekran startowy tylko na stronie głównej; w pozostałych widokach pomijany
+      if (code || orderId || productId || isAdmin || view === 'checkout') hideStartOverlayIfNeeded();
 
       // Wyczyść tracking listener przy zmianie widoku
       if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
@@ -1145,6 +1218,7 @@
       const wrap = document.getElementById('printer-section');
       if (!wrap) return;
       const active = activePrinters();
+      syncPrinterSounds(active);
       const enabled = Object.keys(PRINTERS).filter(function (k) { return PRINTERS[k].enabled; });
       if (enabled.length === 0) { wrap.classList.add('hidden'); return; }
       wrap.classList.remove('hidden');
@@ -2946,6 +3020,13 @@
           }
         }
       });
+
+      // Dzwonek przy klikaniu przycisków/linków (30%)
+      document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('button, a, select, [role="button"], input[type="button"], input[type="submit"]')) {
+          playClickSound();
+        }
+      });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -2956,6 +3037,8 @@
       updateWishBadge();
       startListeners();
       setupEventDelegation();
+      var startBtn = document.getElementById('start-button');
+      if (startBtn) startBtn.addEventListener('click', startApp);
       route();
       renderCartStep(); // wypełnij sidebar (desktop) na start
       renderShopTagFilters();
@@ -4066,6 +4149,17 @@
         <div id="checkout-body"></div>
         <div id="checkout-footer" class="mt-4"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- ============ EKRAN START (powitalny, odblokowuje dźwięk) ============ -->
+  <div id="start-overlay" class="fixed inset-0 z-[60] bg-base flex items-center justify-center p-6">
+    <div class="flex flex-col items-center text-center max-w-sm w-full">
+      <img src="logo.png" alt="Logo Masło3D" class="w-28 h-28 rounded-3xl object-cover shadow-2xl shadow-accent/20 mb-6" />
+      <h1 class="text-4xl font-bold text-white mb-2">Masło3D</h1>
+      <p class="text-slate-400 mb-8">Wydruki 3D · odbiór w szkole</p>
+      <button id="start-button" class="w-full py-4 rounded-2xl font-bold text-lg bg-accent hover:bg-sky-400 text-slate-900 shadow-2xl shadow-accent/30 transition-all">Start</button>
+      <p class="text-xs text-slate-500 mt-6">Kliknij, aby włączyć dźwięk</p>
     </div>
   </div>
 
