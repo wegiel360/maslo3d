@@ -397,9 +397,13 @@
 
     // Koszyk (productId -> ilość), zapisywany lokalnie
     let cart = {};
-    // Krok koszyka: 1=lista, 2=zamówienie, 3=kolejka
+    // Krok koszyka: 1=Koszyk, 2=Dane, 3=Dostawa, 4=Podsumowanie, 5=kolejka
     let cartStep = 1;
-    let lastOrderData = null; // dane ostatnio złożonego zamówienia (dla kroku 3)
+    let lastOrderData = null; // dane ostatnio złożonego zamówienia (dla kroku 5)
+    // Wartości formularza checkout (przechowywane między krokami)
+    let checkoutName = '';
+    let checkoutInitial = '';
+    let checkoutDeliveryDetail = '';
 
     // Drukarki pokazywane na stronie głównej nad ofertami.
     // Konfiguracja: name = nazwa, imgKey = klucz obrazu w assets.json (img),
@@ -545,6 +549,18 @@
     /* --- Cena produktu (czas druku x cena za sekundę) --- */
     function productPrice(p) {
       return (p.printTimeSec || 0) * settings.pricePerGram;
+    }
+
+    /* --- Łączna waga koszyka (gramy) --- */
+    function cartWeight() {
+      var w = 0;
+      Object.keys(cart).forEach(function (id) {
+        var p = products[id];
+        var qty = cart[id] || 0;
+        if (!p || qty <= 0) return;
+        w += (p.weight || 0) * qty;
+      });
+      return w;
     }
 
     /* --- Formatowanie czasu druku --- */
@@ -1012,6 +1028,7 @@
         document.getElementById('pd-add-cart').addEventListener('click', function () {
           cart[productId] = (cart[productId] || 0) + 1;
           saveCart();
+          renderCartStep();
           flash('Dodano do koszyka');
         });
       }
@@ -1063,25 +1080,73 @@
       cartStep = 1;
     }
 
-    function renderCartStep() {
-      var header = document.getElementById('cart-header');
-      var body = document.getElementById('cart-body');
-      var footer = document.getElementById('cart-footer');
+    // Nazwy kroków koszyka (stepper)
+    const CART_STEPS = ['Koszyk', 'Dane', 'Dostawa', 'Podsum.'];
+
+    // Renderuje krok do wskazanego zestawu kontenerów (drawer lub sidebar).
+    // Używany przez renderCartStep() — aktualizuje obie powierzchnie naraz.
+    function renderCartInto(header, body, footer) {
+      if (!header || !body || !footer) return;
+      // Stepper (pomijany na kroku kolejki — 5)
+      if (cartStep >= 1 && cartStep <= 4) {
+        header.innerHTML = renderCartStepper();
+      } else if (cartStep === 5) {
+        header.innerHTML = '';
+      }
 
       if (cartStep === 1) {
-        header.innerHTML = '<h3 class="text-lg font-bold text-white">Koszyk</h3>';
         renderCart(body);
         renderCartFooter(footer);
       } else if (cartStep === 2) {
-        header.innerHTML = '<button id="cart-back" class="text-slate-400 hover:text-white text-sm">&larr; Koszyk</button><h3 class="text-lg font-bold text-white">Złóż zamówienie</h3>';
-        renderCheckout(body);
-        renderCheckoutFooter(footer);
-        document.getElementById('cart-back').addEventListener('click', function () { cartStep = 1; renderCartStep(); });
+        renderCheckoutDane(body);
+        renderCheckoutFooter(footer, 'Dalej', function () { cartStep = 3; renderCartStep(); });
       } else if (cartStep === 3) {
-        header.innerHTML = '';
+        renderCheckoutDostawa(body);
+        renderCheckoutFooter(footer, 'Dalej', function () { cartStep = 4; renderCartStep(); });
+      } else if (cartStep === 4) {
+        renderCheckoutPodsumowanie(body);
+        renderCheckoutFooter(footer, 'Wejdź do kolejki', handleCheckout);
+      } else if (cartStep === 5) {
         renderQueue(body);
         renderQueueFooter(footer);
       }
+    }
+
+    // Stepper: klikalne kroki (można wrócić do wcześniejszych, nie do kolejki)
+    function renderCartStepper() {
+      var html = '<div class="flex items-center gap-1 mb-2">';
+      CART_STEPS.forEach(function (name, i) {
+        var n = i + 1;
+        var active = n === cartStep;
+        var done = n < cartStep;
+        html +=
+          '<button type="button" data-cart-go="' + n + '"' +
+          ' class="flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-all ' +
+          (active ? 'bg-accent text-slate-900' :
+            (done ? 'bg-white/10 text-white hover:bg-white/20 cursor-pointer' : 'bg-white/5 text-slate-500 cursor-default')) +
+          '" ' + (done ? '' : 'disabled') + '>' +
+          '<span class="w-5 h-5 rounded-full flex items-center justify-center text-[10px] ' +
+          (active ? 'bg-slate-900/20' : 'bg-white/10') + '">' + (done ? '&#10003;' : n) + '</span>' +
+          esc(name) + '</button>';
+        if (i < CART_STEPS.length - 1) html += '<span class="text-slate-600 text-xs">·</span>';
+      });
+      html += '</div>';
+      return html;
+    }
+
+    function renderCartStep() {
+      // Drawer (mobile)
+      renderCartInto(
+        document.getElementById('cart-header'),
+        document.getElementById('cart-body'),
+        document.getElementById('cart-footer')
+      );
+      // Sidebar (desktop)
+      renderCartInto(
+        document.getElementById('cart-sidebar-header'),
+        document.getElementById('cart-sidebar-body'),
+        document.getElementById('cart-sidebar-footer')
+      );
     }
 
     function renderCart(container) {
@@ -1119,7 +1184,7 @@
       container.innerHTML =
         '<button id="cart-next" ' + (ids.length === 0 ? 'disabled' : '') +
         ' class="w-full mt-2 py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Dalej &rarr;</button>';
-      var btn = document.getElementById('cart-next');
+      var btn = container.querySelector('#cart-next');
       if (btn) btn.addEventListener('click', function () {
         if (cartSummary().count === 0) { flash('Koszyk jest pusty'); return; }
         cartStep = 2;
@@ -1132,14 +1197,48 @@
       var badge = document.getElementById('cart-badge');
       badge.textContent = s.count;
       badge.classList.toggle('hidden', s.count === 0);
+      var sb = document.getElementById('cart-sidebar-badge');
+      if (sb) sb.textContent = s.count + ' szt. · ' + fmtPrice(s.price);
     }
 
-    function renderCheckout(container) {
-      var s = cartSummary();
+    function renderCheckoutFooter(container, label, action) {
+      container.innerHTML =
+        '<button id="cart-submit-order"' +
+        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">' + label + '</button>';
+      var btn = container.querySelector('#cart-submit-order');
+      if (btn) btn.addEventListener('click', action);
+    }
+
+    // Krok 2: Dane (imię + inicjał)
+    function renderCheckoutDane(container) {
+      container.innerHTML =
+        '<div class="space-y-4">' +
+        '  <div>' +
+        '    <label class="block text-sm text-slate-400 mb-1">Imię *</label>' +
+        '    <input id="checkout-name" type="text" value="' + esc(checkoutName) + '"' +
+        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
+        '  </div>' +
+        '  <div>' +
+        '    <label class="block text-sm text-slate-400 mb-1">Inicjał nazwiska (opcjonalnie)</label>' +
+        '    <input id="checkout-initial" type="text" maxlength="1" value="' + esc(checkoutInitial) + '"' +
+        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
+        '  </div>' +
+        '  <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">' +
+        '    <p><strong>Podawanie imienia i inicjału jest potrzebne TYLKO do procesu dostawy.</strong></p>' +
+        '  </div>' +
+        '  <div id="checkout-message"></div>' +
+        '</div>';
+      var nameInp = container.querySelector('#checkout-name');
+      var initInp = container.querySelector('#checkout-initial');
+      if (nameInp) nameInp.addEventListener('input', function () { checkoutName = this.value; });
+      if (initInp) initInp.addEventListener('input', function () { checkoutInitial = this.value; });
+    }
+
+    // Krok 3: Dostawa
+    function renderCheckoutDostawa(container) {
       var modeNote = settings.mode === 'queue'
         ? 'Tryb zbierania kolejki — zamówienie poczeka na realizację.'
         : 'Zamówienie trafi do druku.';
-
       container.innerHTML =
         '<div class="space-y-4">' +
         '  <div class="bg-base/60 border border-white/10 rounded-xl p-4 text-sm">' +
@@ -1149,33 +1248,44 @@
         '    <label class="block text-sm text-slate-400 mb-1">Dostawa</label>' +
         '    <div class="flex gap-2">' +
         '      <span class="bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm flex-shrink-0">Szkoła</span>' +
-        '      <input id="checkout-delivery-detail" type="text"' +
+        '      <input id="checkout-delivery-detail" type="text" value="' + esc(checkoutDeliveryDetail) + '"' +
         '        class="flex-1 bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none text-sm" />' +
         '    </div>' +
-        '  </div>' +
-        '  <div>' +
-        '    <label class="block text-sm text-slate-400 mb-1">Imię *</label>' +
-        '    <input id="checkout-name" type="text" required' +
-        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
-        '  </div>' +
-        '  <div>' +
-        '    <label class="block text-sm text-slate-400 mb-1">Inicjał nazwiska (opcjonalnie)</label>' +
-        '    <input id="checkout-initial" type="text" maxlength="1"' +
-        '      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />' +
-        '  </div>' +
-        '  <div class="text-xs text-slate-500 bg-base/60 border border-white/10 rounded-xl px-3 py-2">' +
-        '    <p><strong>Podawanie imienia i inicjału jest potrzebne TYLKO do procesu dostawy.</strong></p>' +
         '  </div>' +
         '  <p class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2">' + esc(modeNote) + '</p>' +
         '  <div id="checkout-message"></div>' +
         '</div>';
+      var dd = container.querySelector('#checkout-delivery-detail');
+      if (dd) dd.addEventListener('input', function () { checkoutDeliveryDetail = this.value; });
     }
 
-    function renderCheckoutFooter(container) {
-      container.innerHTML =
-        '<button id="cart-submit-order"' +
-        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Wejdź do kolejki</button>';
-      document.getElementById('cart-submit-order').addEventListener('click', handleCheckout);
+    // Krok 4: Podsumowanie (lista + przycisk wejścia do kolejki)
+    function renderCheckoutPodsumowanie(container) {
+      var s = cartSummary();
+      var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
+      var modeNote = settings.mode === 'queue'
+        ? 'Tryb zbierania kolejki — zamówienie poczeka na realizację.'
+        : 'Zamówienie trafi do druku.';
+      var html =
+        '<div class="space-y-3">' +
+        '  <div class="bg-base/60 border border-white/10 rounded-xl p-4 space-y-2">' +
+        (ids.length === 0
+          ? '<p class="text-center text-slate-500 py-2">Koszyk jest pusty.</p>'
+          : ids.map(function (id) {
+            var p = products[id]; var qty = cart[id];
+            return '<div class="flex justify-between text-sm"><span class="text-slate-300">' + esc(p.name) + ' &times; ' + qty + '</span><span class="text-white font-medium">' + fmtPrice(productPrice(p) * qty) + '</span></div>';
+          }).join('') +
+          '<div class="flex justify-between border-t border-white/10 pt-2 text-sm"><span class="text-slate-400">Łączna waga</span><span class="text-white">' + fmtGrams(cartWeight()) + '</span></div>' +
+          '<div class="flex justify-between text-sm"><span class="text-slate-400">Razem</span><span class="text-white font-bold">' + fmtPrice(s.price) + '</span></div>') +
+        '  </div>' +
+        '  <div class="bg-base/60 border border-white/10 rounded-xl px-4 py-3 text-sm space-y-1">' +
+        '    <div class="flex justify-between"><span class="text-slate-400">Odbierający</span><span class="text-white">' + esc(checkoutName) + ' ' + esc(checkoutInitial ? checkoutInitial + '.' : '') + '</span></div>' +
+        '    <div class="flex justify-between"><span class="text-slate-400">Dostawa</span><span class="text-white">Szkoła' + (checkoutDeliveryDetail ? ' — ' + esc(checkoutDeliveryDetail) : '') + '</span></div>' +
+        '  </div>' +
+        '  <p class="text-xs text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-xl px-3 py-2">' + esc(modeNote) + '</p>' +
+        '  <div id="checkout-message"></div>' +
+        '</div>';
+      container.innerHTML = html;
     }
 
     function renderQueue(container) {
@@ -1213,16 +1323,23 @@
       container.innerHTML =
         '<button id="cart-close-queue"' +
         ' class="w-full py-3 rounded-xl font-bold bg-white/10 hover:bg-white/15 text-white transition-all">Zamknij</button>';
-      document.getElementById('cart-close-queue').addEventListener('click', closeCart);
+      var cq = container.querySelector('#cart-close-queue');
+      if (cq) cq.addEventListener('click', closeCart);
     }
 
-    // Złożenie zamówienia (koszyk -> Firebase)
+    // Złożenie zamówienia (krok 4 -> kolejka)
     function handleCheckout(e) {
       if (e) e.preventDefault();
-      var name = document.getElementById('checkout-name').value.trim();
-      var initial = (document.getElementById('checkout-initial').value || '').trim().toUpperCase();
-      var deliveryDetail = (document.getElementById('checkout-delivery-detail').value || '').trim();
-      var msg = document.getElementById('checkout-message');
+      var name = checkoutName.trim();
+      var initial = checkoutInitial.trim().toUpperCase();
+      var deliveryDetail = checkoutDeliveryDetail.trim();
+      // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni (drawer/sidebar)
+      var activeContainers = document.getElementById('cart-drawer').classList.contains('hidden')
+        ? document.getElementById('cart-sidebar-body')
+        : document.getElementById('cart-body');
+      var msg = activeContainers ? activeContainers.querySelector('#checkout-message') : null;
+
+      if (!msg) msg = { innerHTML: '' }; // fallback, by nie psować dalszej logiki
 
       if (!name) { msg.innerHTML = '<p class="text-red-300 text-sm">Podaj imię.</p>'; return; }
 
@@ -1289,8 +1406,8 @@
       };
 
       msg.innerHTML = '<p class="text-slate-400 text-sm">Wysyłanie...</p>';
-      var submitBtn = document.getElementById('cart-submit-order');
-      if (submitBtn) submitBtn.disabled = true;
+      var submitBtns = document.querySelectorAll('#cart-submit-order');
+      submitBtns.forEach(function (b) { b.disabled = true; });
 
       var batch = db.batch();
       batch.set(db.collection('orders').doc(orderId), order);
@@ -1309,12 +1426,12 @@
           saveCart();
           markOrderPlaced();
           lastOrderData = { orderId: orderId, orderCode: orderCode, name: displayName, estPrintSec: estPrintSec };
-          cartStep = 3;
+          cartStep = 5;
           renderCartStep();
         })
         .catch(function (err) {
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
-          if (submitBtn) submitBtn.disabled = false;
+          submitBtns.forEach(function (b) { b.disabled = false; });
         });
     }
 
@@ -1528,7 +1645,7 @@
         total++;
         if (o.status === 'Drukuje się') printing++;
         if (o.status === 'W kolejce') queued++;
-        if (o.status === 'Doręczone') {
+        if (o.status === 'W drodze' || o.status === 'Doręczone') {
           deliveredQty += (o.estPrintSec || 0);
           revenue += (o.totalPrice || 0);
         }
@@ -1562,7 +1679,11 @@
         const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
         if (ordersByDay.hasOwnProperty(key)) {
           ordersByDay[key]++;
-          gramsByDay[key] += (o.estPrintSec || 0);
+          // Waga/czas druku licz tylko dla zrealizowanych (W drodze / Doręczone),
+          // aby nowe zamówienia w kolejce/druku nie zawyżały statystyk.
+          if (o.status === 'W drodze' || o.status === 'Doręczone') {
+            gramsByDay[key] += (o.estPrintSec || 0);
+          }
         }
       });
 
@@ -2283,6 +2404,7 @@
           cart[id] = (cart[id] || 0) + 1;
           saveCart();
           flash('Dodano do koszyka');
+          renderCartStep(); // odśwież sidebar/drawer
           return;
         }
         btn = e.target.closest('[data-goto-product]');
@@ -2314,9 +2436,10 @@
         }
       });
 
-      // Koszyk: inkrementacja, dekrementacja, usuwanie
-      var cartBody = document.getElementById('cart-body');
-      if (cartBody) cartBody.addEventListener('click', function (e) {
+      // Koszyk: inkrementacja, dekrementacja, usuwanie (drawer + sidebar)
+      var cartBodies = document.querySelectorAll('#cart-body, #cart-sidebar-body');
+      cartBodies.forEach(function (cartBody) {
+      cartBody.addEventListener('click', function (e) {
         var btn;
         btn = e.target.closest('[data-cart-inc]');
         if (btn) {
@@ -2341,6 +2464,7 @@
           renderCartStep();
           return;
         }
+      });
       });
 
       // Tabela zamówień admina: status, szacunek, anulowanie, link
@@ -2391,6 +2515,18 @@
           }
         });
       }
+
+      // Stepper koszyka: powrót do wcześniejszego (ukończonego) kroku
+      document.addEventListener('click', function (e) {
+        var goBtn = e.target.closest('[data-cart-go]');
+        if (goBtn) {
+          var go = parseInt(goBtn.dataset.cartGo, 10);
+          if (go && go >= 1 && go < 5 && go < cartStep) {
+            cartStep = go;
+            renderCartStep();
+          }
+        }
+      });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -2399,6 +2535,7 @@
       startListeners();
       setupEventDelegation();
       route();
+      renderCartStep(); // wypełnij sidebar (desktop) na start
       // Zasoby (tła SVG + obrazy drukarek) — po załadowaniu odśwież sekcję drukarek
       loadAssets().then(function () { renderPrinters(); }).catch(function (e) { console.error('assets:', e); });
 
@@ -2451,7 +2588,7 @@
        ============================================================ -->
 
   <!-- ================= WIDOK 1: SKLEP ================= -->
-  <div id="view-shop" data-view class="hidden">
+  <div id="view-shop" data-view class="hidden lg:pr-[380px]">
     <!-- NAGŁÓWEK -->
     <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
       <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -2474,17 +2611,17 @@
         class="hidden text-sm font-medium text-amber-200 bg-amber-400/10 border border-amber-400/30 rounded-xl px-4 py-3"></div>
     </div>
 
-    <!-- SEKCJA DRUKAREK -->
-    <section class="max-w-6xl mx-auto px-4 pt-6">
-      <div id="printer-section" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4"></div>
-    </section>
-
     <main class="max-w-6xl mx-auto px-4 py-8">
       <section class="text-center mb-10">
         <h2 class="text-3xl sm:text-4xl font-bold text-white">Zamów własny wydruk 3D</h2>
         <p class="text-slate-400 mt-2 max-w-xl mx-auto">
           Wybierz oferty, a koszyk pokaże łączną wagę. Odbiór w szkole.
         </p>
+      </section>
+
+      <!-- SEKCJA DRUKAREK -->
+      <section class="mb-8">
+        <div id="printer-section" class="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-2 gap-4"></div>
       </section>
 
       <section>
@@ -2498,26 +2635,6 @@
     <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
       <p>Masło3D - projekt szkolny</p>
     </footer>
-
-    <!-- PRZYCISK KOSZYKA -->
-    <button id="cart-open"
-      class="fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-accent hover:bg-sky-400 text-slate-900 font-bold px-5 py-3.5 rounded-2xl shadow-2xl shadow-accent/30 transition-all">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
-      </svg>
-      <span>Koszyk</span>
-      <span id="cart-badge"
-        class="hidden min-w-6 h-6 px-1.5 rounded-full bg-slate-900 text-white text-xs font-bold items-center justify-center"></span>
-    </button>
-
-    <!-- KOSZYK (drawer — 3 kroki) -->
-    <div id="cart-drawer" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
-      <div class="ml-auto w-full max-w-md h-full bg-panel border-l border-white/10 flex flex-col">
-        <div id="cart-header" class="flex items-center justify-between p-4 border-b border-white/10"></div>
-        <div id="cart-body" class="flex-1 overflow-y-auto px-4"></div>
-        <div id="cart-footer" class="border-t border-white/10 p-4 space-y-2"></div>
-      </div>
-    </div>
 
     <!-- MODAL: UDOSTĘPNIJ (QR) -->
     <div id="share-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -2579,7 +2696,7 @@
   </div>
 
   <!-- ================= WIDOK: PODSTRONA PRODUKTU ================= -->
-  <div id="view-product" data-view class="hidden">
+  <div id="view-product" data-view class="hidden lg:pr-[380px]">
     <div class="min-h-screen flex flex-col">
       <header class="sticky top-0 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
         <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
@@ -3401,6 +3518,37 @@
     window.generateModelThumbnail = generateModelThumbnail;
     window.__getModelColor = function () { return modelColor; };
   </script>
+
+  <!-- ================== GLOBALNE ELEMENTY KOSZYKA ================== -->
+  <!-- Pływający przycisk koszyka (widoczny we wszystkich widokach) -->
+  <button id="cart-open"
+    class="lg:hidden fixed bottom-5 right-5 z-40 flex items-center gap-2 bg-accent hover:bg-sky-400 text-slate-900 font-bold px-5 py-3.5 rounded-2xl shadow-2xl shadow-accent/30 transition-all">
+    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z" />
+    </svg>
+    <span>Koszyk</span>
+    <span id="cart-badge"
+      class="hidden min-w-6 h-6 px-1.5 rounded-full bg-slate-900 text-white text-xs font-bold items-center justify-center"></span>
+  </button>
+
+  <!-- Drawer koszyka (mobile) — globalny, dostępny na podstronie produktu -->
+  <div id="cart-drawer" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-sm">
+    <div class="ml-auto w-full max-w-md h-full bg-panel border-l border-white/10 flex flex-col">
+      <div id="cart-header" class="flex items-center justify-between p-4 border-b border-white/10"></div>
+      <div id="cart-body" class="flex-1 overflow-y-auto px-4"></div>
+      <div id="cart-footer" class="border-t border-white/10 p-4 space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Stały prawy sidebar koszyka (desktop) — zawsze widoczny na lg -->
+  <aside id="cart-sidebar" class="hidden lg:flex fixed top-0 right-0 bottom-0 w-[380px] z-30 bg-panel border-l border-white/10 flex-col shadow-2xl">
+    <div class="flex items-center justify-between p-4 border-b border-white/10">
+      <h3 class="text-lg font-bold text-white">Koszyk</h3>
+      <span id="cart-sidebar-badge" class="text-xs text-slate-400"></span>
+    </div>
+    <div id="cart-sidebar-body" class="flex-1 overflow-y-auto px-4"></div>
+    <div id="cart-sidebar-footer" class="border-t border-white/10 p-4 space-y-2"></div>
+  </aside>
 
 </body>
 </html>
