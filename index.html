@@ -850,18 +850,32 @@
       const orderId = params.get('orderId');
       const productId = params.get('p');
       const isAdmin = params.get('admin') === 'true';
+      const view = params.get('view');
 
       // Wyczyść tracking listener przy zmianie widoku
       if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
 
       document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
 
+      // Koszyk widoczny poza panelem admina i pełnoekranowym widokiem checkout
+      setCartVisible(!isAdmin && view !== 'checkout');
+
       if (code || orderId) {
         document.getElementById('view-tracking').classList.remove('hidden');
         initTracking(code ? 'o:' + code : 'id:' + orderId);
       } else if (productId) {
+        resetCartStepIfNeeded();
         document.getElementById('view-product').classList.remove('hidden');
         renderProductDetail(productId);
+      } else if (view === 'checkout') {
+        if (cartSummary().count === 0) {
+          document.getElementById('view-shop').classList.remove('hidden');
+          renderShop();
+        } else {
+          if (cartStep < 2) cartStep = 2;
+          document.getElementById('view-checkout').classList.remove('hidden');
+          renderCheckoutView();
+        }
       } else if (isAdmin) {
         if (isAdminAuthed()) {
           document.getElementById('view-admin').classList.remove('hidden');
@@ -870,8 +884,58 @@
           document.getElementById('view-admin-login').classList.remove('hidden');
         }
       } else {
+        resetCartStepIfNeeded();
         document.getElementById('view-shop').classList.remove('hidden');
         renderShop();
+      }
+    }
+
+    // Ukrywa/pokazuje globalne elementy koszyka (brak koszyka w panelu admina i na checkout)
+    function setCartVisible(visible) {
+      var lo = document.getElementById('cart-open');
+      var sb = document.getElementById('cart-sidebar');
+      if (lo) lo.style.display = visible ? '' : 'none';
+      if (sb) sb.style.display = visible ? '' : 'none';
+    }
+
+    // Poza checkout kart w bocznym panelu wraca do kroku koszyka
+    function resetCartStepIfNeeded() {
+      if (cartStep > 1 && cartStep < 5) { cartStep = 1; renderCartStep(); }
+    }
+
+    // Kroki 2-4 na osobnej, pełnoekranowej stronie ?view=checkout (pushState — bez przeładowania)
+    function goCheckout() {
+      cartStep = 2;
+      try { history.pushState({}, '', '?view=checkout'); } catch (e) { window.location.search = '?view=checkout'; }
+      route();
+    }
+    function backToCart() {
+      cartStep = 1;
+      try { history.replaceState({}, '', window.location.pathname); } catch (e) { window.location.search = ''; }
+      route();
+    }
+    function renderCheckoutView() {
+      var header = document.getElementById('checkout-header');
+      var body = document.getElementById('checkout-body');
+      var footer = document.getElementById('checkout-footer');
+      if (!header || !body || !footer) return;
+      header.innerHTML = renderCartStepper();
+      if (cartStep === 2) {
+        renderCheckoutDane(body);
+        renderCheckoutFooter(footer, 'Dalej', function () { cartStep = 3; renderCheckoutView(); });
+      } else if (cartStep === 3) {
+        renderCheckoutDostawa(body);
+        renderCheckoutFooter(footer, 'Dalej', function () { cartStep = 4; renderCheckoutView(); });
+      } else if (cartStep === 4) {
+        renderCheckoutPodsumowanie(body);
+        renderCheckoutFooter(footer, 'Wejdź do kolejki', handleCheckout);
+      } else if (cartStep === 5) {
+        renderQueue(body);
+        footer.innerHTML =
+          '<button id="checkout-close"' +
+          ' class="w-full py-3 rounded-xl font-bold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Wróć do sklepu</button>';
+        var cq = footer.querySelector('#checkout-close');
+        if (cq) cq.addEventListener('click', backToCart);
       }
     }
 
@@ -1177,7 +1241,7 @@
         '  <div id="pd-gallery-wrap" class="relative aspect-square w-full rounded-2xl overflow-hidden bg-black/40 shadow-xl select-none" style="touch-action:pan-y">' +
         (galleryImages.length > 0
           ? galleryImages.map(function (gi, gidx) {
-            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-cover ' + (gidx === 0 ? '' : 'hidden') + '" />';
+            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain ' + (gidx === 0 ? '' : 'hidden') + '" />';
           }).join('') +
           (galleryImages.length > 1
             ? '<button type="button" data-gall-prev class="gallery-arrow absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&larr;</button>' +
@@ -1214,6 +1278,17 @@
         '</div>';
 
       box.innerHTML = html;
+
+      // Galeria dopasowuje rozmiar do proporcji autowciętego (auto-trim) zdjęcia
+      var wrapEl = document.getElementById('pd-gallery-wrap');
+      var firstImg = wrapEl ? wrapEl.querySelector('.pd-gall-img') : null;
+      if (firstImg) {
+        firstImg.addEventListener('load', function () {
+          if (wrapEl && firstImg.naturalWidth && firstImg.naturalHeight) {
+            wrapEl.style.aspectRatio = firstImg.naturalWidth + ' / ' + firstImg.naturalHeight;
+          }
+        });
+      }
 
       // W6: serce obserwowania na podstronie produktu
       var pdWish = document.getElementById('pd-wish');
@@ -1312,7 +1387,14 @@
     // W11: załaduj obrazki (data-src -> src) — na żądanie lub od razu poza siatką
     let shopImgObserver = null;
     function hydrateImage(img) {
-      if (img.dataset.src && !img.src) { img.src = img.dataset.src; }
+      if (img.dataset.src && !img.src) {
+        img.src = img.dataset.src;
+        img.addEventListener('load', function () {
+          if (img.naturalWidth && img.naturalHeight) {
+            img.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
+          }
+        });
+      }
     }
     function hydrateImages(root) {
       if (!root) return;
@@ -1448,8 +1530,7 @@
       var btn = container.querySelector('#cart-next');
       if (btn) btn.addEventListener('click', function () {
         if (cartSummary().count === 0) { flash('Koszyk jest pusty'); return; }
-        cartStep = 2;
-        renderCartStep();
+        goCheckout();
       });
     }
 
@@ -1592,10 +1673,13 @@
       var name = checkoutName.trim();
       var initial = checkoutInitial.trim().toUpperCase();
       var deliveryDetail = checkoutDeliveryDetail.trim();
-      // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni (drawer/sidebar)
-      var activeContainers = document.getElementById('cart-drawer').classList.contains('hidden')
-        ? document.getElementById('cart-sidebar-body')
-        : document.getElementById('cart-body');
+      // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni (drawer/sidebar/checkout)
+      var onCheckout = new URLSearchParams(window.location.search).get('view') === 'checkout';
+      var activeContainers = onCheckout
+        ? document.getElementById('checkout-body')
+        : (document.getElementById('cart-drawer').classList.contains('hidden')
+          ? document.getElementById('cart-sidebar-body')
+          : document.getElementById('cart-body'));
       var msg = activeContainers ? activeContainers.querySelector('#checkout-message') : null;
 
       if (!msg) msg = { innerHTML: '' }; // fallback, by nie psować dalszej logiki
@@ -1683,7 +1767,7 @@
           markOrderPlaced();
           lastOrderData = { orderId: orderId, orderCode: orderCode, name: displayName, estPrintSec: estPrintSec };
           cartStep = 5;
-          renderCartStep();
+          if (onCheckout) renderCheckoutView(); else renderCartStep();
         })
         .catch(function (err) {
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
@@ -2552,7 +2636,7 @@
         { label: 'Obraz', val: function (p, id) {
           var img = imageSrcFor(p.imageUrl || p.image);
           return img && img.length > 20
-            ? '<img data-src="' + esc(img) + '" alt="" class="w-full aspect-square object-cover rounded-lg bg-black/40" loading="lazy" />'
+            ? '<img data-src="' + esc(img) + '" alt="" class="w-full aspect-square object-contain rounded-lg bg-black/40" loading="lazy" />'
             : '<div class="w-full aspect-square flex items-center justify-center text-slate-600 text-xs bg-black/40 rounded-lg">Brak</div>';
         } },
         { label: 'Nazwa', val: function (p) { return '<span class="font-semibold text-white">' + esc(p.name) + '</span>'; } },
@@ -2853,7 +2937,12 @@
           var go = parseInt(goBtn.dataset.cartGo, 10);
           if (go && go >= 1 && go < 5 && go < cartStep) {
             cartStep = go;
-            renderCartStep();
+            var cv = new URLSearchParams(window.location.search).get('view');
+            if (cv === 'checkout') {
+              if (go === 1) backToCart(); else renderCheckoutView();
+            } else {
+              renderCartStep();
+            }
           }
         }
       });
@@ -2980,6 +3069,10 @@
       // Koszyk z podstrony produktu
       var pdCartBtn = document.getElementById('pd-open-cart');
       if (pdCartBtn) pdCartBtn.addEventListener('click', openCart);
+
+      // Checkout (osobna strona kroków 2-4): powrót do koszyka
+      var checkoutBack = document.getElementById('checkout-back');
+      if (checkoutBack) checkoutBack.addEventListener('click', backToCart);
     });
 
     window.addEventListener('popstate', route);
@@ -3960,6 +4053,21 @@
     <div id="cart-sidebar-body" class="flex-1 overflow-y-auto px-4"></div>
     <div id="cart-sidebar-footer" class="border-t border-white/10 p-4 space-y-2"></div>
   </aside>
+
+  <!-- ============ WIDOK CHECKOUT (osobna strona, kroki 2-4) ============ -->
+  <div id="view-checkout" data-view class="hidden min-h-screen bg-base">
+    <div class="max-w-2xl mx-auto px-4 py-6">
+      <div class="flex items-center justify-between mb-4">
+        <button id="checkout-back" class="text-sm text-slate-400 hover:text-accent transition-colors">&larr; Wróć do koszyka</button>
+        <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
+      </div>
+      <div class="bg-panel border border-white/10 rounded-2xl p-5">
+        <div id="checkout-header"></div>
+        <div id="checkout-body"></div>
+        <div id="checkout-footer" class="mt-4"></div>
+      </div>
+    </div>
+  </div>
 
   <!-- ============ LISTA ŻYCZEŃ (modal) ============ -->
   <div id="wish-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
