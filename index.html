@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#0b0f1a" />
   <title>Masło3D - wydruki 3D</title>
-  <meta name="description" content="Masło3D - system zamówień wydruków 3D dla społeczności szkolnej. Wycena za gram, kolejka oczekujących i śledzenie zamówienia." />
+  <meta name="description" content="Masło3D - system zamówień wydruków 3D dla społeczności szkolnej. Kolejka oczekujących i śledzenie zamówienia." />
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="logo-180.png" />
 
@@ -82,6 +82,87 @@
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
     }
+  </style>
+
+  <!-- Motywy: kolor akcentu + tryb (ciemny / wysoki kontrast / jasny).
+       Nadbija statyczny kolor akcentu Tailwinda zmiennymi CSS (W12). -->
+  <style>
+    html {
+      --m-accent: #38bdf8;       /* domyślny: skyla */
+      --m-base: #0b0f1a;
+      --m-panel-solid: #121826;
+      --m-text: #cbd5e1;
+      --m-text2: #64748b;
+      --m-text3: #94a3b8;
+      --m-head: #ffffff;
+      --m-border: rgba(255, 255, 255, 0.10);
+      --m-border-strong: rgba(255, 255, 255, 0.35);
+    }
+    html.accent-violet   { --m-accent: #a78bfa; }
+    html.accent-emerald  { --m-accent: #34d399; }
+    html.accent-amber    { --m-accent: #fbbf24; }
+    html.accent-rose     { --m-accent: #fb7185; }
+    /* Tryb jasny */
+    html.light {
+      --m-base: #eef2f7;
+      --m-panel-solid: #ffffff;
+      --m-text: #1e293b;
+      --m-text2: #475569;
+      --m-text3: #64748b;
+      --m-head: #0f172a;
+      --m-border: rgba(15, 23, 42, 0.12);
+      --m-border-strong: rgba(15, 23, 42, 0.30);
+    }
+    /* Tryb wysokiego kontrastu: lite panele + mocne obramowania */
+    html.highcontrast {
+      --m-panel-solid: #0c111c;
+      --m-border: var(--m-border-strong);
+    }
+
+    body { background-color: var(--m-base); color: var(--m-text); }
+    html.light body, html.highcontrast body { background-color: var(--m-base); }
+
+    /* Akcent — dynamiczny (W12) */
+    .text-accent                         { color: var(--m-accent) !important; }
+    .bg-accent                           { background-color: var(--m-accent) !important; }
+    .border-accent                       { border-color: var(--m-accent) !important; }
+    .ring-accent                         { --tw-ring-color: var(--m-accent) !important; }
+    .hover\:text-accent:hover            { color: var(--m-accent) !important; }
+    .hover\:border-accent:hover          { border-color: var(--m-accent) !important; }
+    .hover\:bg-accent:hover              { background-color: var(--m-accent) !important; }
+    .shadow-accent\/20                   { --tw-shadow-color: var(--m-accent); }
+
+    /* Spójne bazowe/tekstowe dla jasnego i kontrastowego trybu */
+    html.light .text-white               { color: var(--m-head) !important; }
+    html.light .text-slate-200           { color: #1e293b !important; }
+    html.light .text-slate-300           { color: #334155 !important; }
+    html.light .text-slate-400           { color: var(--m-text2) !important; }
+    html.light .text-slate-500           { color: var(--m-text2) !important; }
+    html.light .text-slate-600           { color: var(--m-text3) !important; }
+
+    /* Panele w jasnym / kontrastowym trybie — lite, bez translucencji */
+    html.light [class*="bg-panel"],
+    html.highcontrast [class*="bg-panel"] {
+      background: var(--m-panel-solid);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    html.light input[class*="bg-panel"], html.light select[class*="bg-panel"],
+    html.light textarea[class*="bg-panel"],
+    html.highcontrast input[class*="bg-panel"], html.highcontrast select[class*="bg-panel"],
+    html.highcontrast textarea[class*="bg-panel"] {
+      background: var(--m-panel-solid);
+    }
+    html.light header.backdrop-blur-xl,
+    html.highcontrast header.backdrop-blur-xl {
+      background-color: var(--m-base);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    html.highcontrast [class*="border-white\/10"],
+    html.highcontrast [class*="border-white\/5"] { border-color: var(--m-border-strong) !important; }
+    html.light .bg-base { background-color: var(--m-base); }
+    html.light .bg-base\/60, html.light .bg-base\/50, html.light .bg-base\/80 { background-color: rgba(238,242,247,0.85); }
   </style>
 
   <!-- Three.js (moduł ES) do generowania miniaturki z modelu 3D -->
@@ -390,10 +471,10 @@
     const LAST_ORDER_KEY = 'maslo3d_last_order';
 
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
-    let settings = { pricePerGram: 0, mode: 'queue', banner: '', adminPasswordHash: '' }; // cena za gram (zł), tryb, komunikat, hash hasła
+    let settings = { mode: 'queue', banner: '', adminPasswordHash: '' }; // tryb, komunikat, hash hasła
     let firstDataLoaded = false; // true po pierwszym dostarczeniu produktów i ustawień (unika flasha "Produkt nie znaleziony")
-    let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, createdAt}
-    let orders = {};   // id -> {name, className, delivery, items, totalWeight, totalPrice, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
+    let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, draft, createdAt}
+    let orders = {};   // id -> {name, className, delivery, items, totalWeight, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
     // Koszyk (productId -> ilość), zapisywany lokalnie
     let cart = {};
@@ -404,6 +485,85 @@
     let checkoutName = '';
     let checkoutInitial = '';
     let checkoutDeliveryDetail = '';
+
+    // --- Preferencje użytkownika (localStorage) ---
+    const WISH_KEY = 'maslo3d_wishlist';
+    const THEME_KEY = 'maslo3d_theme';
+    const ACCENT_KEY = 'maslo3d_accent';
+    // Lista życzeń (id produktów)
+    let wishlist = new Set();
+    function loadWishlist() {
+      try {
+        var arr = JSON.parse(localStorage.getItem(WISH_KEY) || '[]');
+        if (Array.isArray(arr)) wishlist = new Set(arr);
+      } catch (e) { wishlist = new Set(); }
+    }
+    function saveWishlist() {
+      try { localStorage.setItem(WISH_KEY, JSON.stringify(Array.from(wishlist))); } catch (e) {}
+      updateWishBadge();
+    }
+    function toggleWish(id) {
+      if (wishlist.has(id)) wishlist.delete(id); else wishlist.add(id);
+      saveWishlist();
+    }
+    function updateWishBadge() {
+      var b = document.getElementById('wish-badge');
+      if (b) { b.textContent = wishlist.size; b.classList.toggle('hidden', wishlist.size === 0); }
+      var g = document.getElementById('wish-count');
+      if (g) g.textContent = wishlist.size;
+    }
+    // Lista porównania (max 3 produkty)
+    const COMPARE_MAX = 3;
+    let compareIds = [];
+    function toggleCompare(id) {
+      var i = compareIds.indexOf(id);
+      if (i >= 0) { compareIds.splice(i, 1); }
+      else {
+        if (compareIds.length >= COMPARE_MAX) { flash('Maksymalnie ' + COMPARE_MAX + ' oferty do porównania'); return; }
+        compareIds.push(id);
+      }
+      renderCompareBar();
+    }
+    function renderCompareBar() {
+      var bar = document.getElementById('compare-fab');
+      if (!bar) return;
+      if (compareIds.length === 0) { bar.classList.add('hidden'); return; }
+      bar.classList.remove('hidden');
+      var items = compareIds.map(function (id) {
+        var p = products[id];
+        return '<span class="flex items-center gap-1 bg-base/60 border border-white/10 rounded-full px-2 py-1 text-xs text-white">' +
+          (p ? esc(p.name) : id) +
+          '<button data-compare-remove="' + id + '" class="text-slate-400 hover:text-red-300 text-sm leading-none">&times;</button></span>';
+      }).join('');
+      var countText = document.getElementById('compare-count');
+      if (countText) countText.textContent = compareIds.length;
+      bar.querySelector('#compare-items').innerHTML = items;
+    }
+    // Filtr sklepu (stan przetrwa re-render)
+    let shopQuery = '';
+    let shopTags = [];   // wybrane tagi (checkboxy)
+    let shopSort = 'name'; // name | time | weight | stock
+    let shopWishOnly = false;
+    // Motyw + akcent (W12)
+    let currentTheme = 'dark';
+    let currentAccent = 'sky';
+    function applyTheme() {
+      var html = document.documentElement;
+      html.classList.remove('dark', 'light', 'highcontrast');
+      html.classList.add(currentTheme);
+      html.classList.remove('accent-sky', 'accent-violet', 'accent-emerald', 'accent-amber', 'accent-rose');
+      html.classList.add('accent-' + currentAccent);
+      try { localStorage.setItem(THEME_KEY, currentTheme); localStorage.setItem(ACCENT_KEY, currentAccent); } catch (e) {}
+    }
+    function loadThemePrefs() {
+      try {
+        var t = localStorage.getItem(THEME_KEY);
+        if (t === 'light' || t === 'highcontrast') currentTheme = t;
+        var a = localStorage.getItem(ACCENT_KEY);
+        if (['sky', 'violet', 'emerald', 'amber', 'rose'].indexOf(a) !== -1) currentAccent = a;
+      } catch (e) {}
+      applyTheme();
+    }
 
     // Drukarki pokazywane na stronie głównej nad ofertami.
     // Konfiguracja: name = nazwa, imgKey = klucz obrazu w assets.json (img),
@@ -424,16 +584,6 @@
       return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
-    }
-
-    /* --- Formatowanie pieniędzy: 5,00 zł --- */
-    function fmtPrice(p) {
-      return Number(p || 0).toFixed(2).replace('.', ',') + ' zł';
-    }
-
-    /* --- Formatowanie ceny za gram: 0,20 zł/gr --- */
-    function fmtPerGram(p) {
-      return Number(p || 0).toFixed(2).replace('.', ',') + ' zł/gr';
     }
 
     /* --- Formatowanie gramatury: 12 gr --- */
@@ -533,22 +683,16 @@
       updateCartBadge();
     }
 
-    /* --- Podsumowanie koszyka: ilość sztuk, cena --- */
+    /* --- Podsumowanie koszyka: ilość sztuk --- */
     function cartSummary() {
-      var count = 0, price = 0;
+      var count = 0;
       Object.keys(cart).forEach(function (id) {
         var p = products[id];
         var qty = cart[id] || 0;
         if (!p || qty <= 0) return;
         count += qty;
-        price += (p.printTimeSec || 0) * qty * settings.pricePerGram;
       });
-      return { count: count, price: price };
-    }
-
-    /* --- Cena produktu (czas druku x cena za sekundę) --- */
-    function productPrice(p) {
-      return (p.printTimeSec || 0) * settings.pricePerGram;
+      return { count: count };
     }
 
     /* --- Łączna waga koszyka (gramy) --- */
@@ -743,7 +887,7 @@
       requestAnimationFrame(function () {
         renderPending = false;
         renderShop();
-        if (isViewOpen('view-admin')) { renderAdminProducts(); renderAdminOrders(); renderPrintQueue(); renderStats(); renderChart(); }
+        if (isViewOpen('view-admin')) { renderAdminProducts(); renderAdminOrders(); renderPrintQueue(); renderBulkStock(); }
         var params = new URLSearchParams(window.location.search);
         var code = params.get('o');
         var orderId = params.get('orderId');
@@ -789,6 +933,7 @@
               delete orders[change.doc.id];
             }
           });
+          checkNewOrderAdmin(orders); // W5: powiadomienie (bez dźwięku)
           scheduleRender();
         }, function (err) { console.error('Orders listener error:', err); });
     }
@@ -820,40 +965,115 @@
         banner.classList.add('hidden');
       }
 
-      // Lista produktów
+      // Lista produktów (z filtrami W3, życzeniami W6, porównaniem W7)
       const grid = document.getElementById('shop-grid');
-      const keys = Object.keys(products);
+      let keys = Object.keys(products).filter(function (id) {
+        const p = products[id];
+        if (!p) return false;
+        if (p.draft) return false; // W10: draft ukryty w sklepie
+        if (shopWishOnly && !wishlist.has(id)) return false;
+        const q = shopQuery.trim().toLowerCase();
+        if (q) {
+          const hay = (p.name || '').toLowerCase() + ' ' + ((p.tags || []).join(' ').toLowerCase());
+          if (hay.indexOf(q) === -1) return false;
+        }
+        if (shopTags.length > 0) {
+          const ptags = p.tags || [];
+          const hit = shopTags.some(function (t) { return ptags.indexOf(t) !== -1; });
+          if (!hit) return false;
+        }
+        return true;
+      });
       grid.innerHTML = '';
 
       if (keys.length === 0) {
         grid.innerHTML =
           '<div class="col-span-full text-center py-16 text-slate-400">' +
           '  <p class="text-lg">Brak ofert w sklepie.</p>' +
-          '  <p class="text-sm mt-1">Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.</p>' +
+          '  <p class="text-sm mt-1">' + ((shopQuery || shopTags.length || shopWishOnly) ? 'Zmień filtry, aby zobaczyć więcej.' : 'Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.') + '</p>' +
           '</div>';
         return;
       }
 
+      // Sortowanie
+      keys.sort(function (a, b) {
+        const pa = products[a], pb = products[b];
+        if (shopSort === 'time') return (pa.printTimeSec || 0) - (pb.printTimeSec || 0);
+        if (shopSort === 'weight') return (pa.weight || 0) - (pb.weight || 0);
+        if (shopSort === 'stock') return ((pa.stock == null ? -1 : pa.stock) - (pb.stock == null ? -1 : pb.stock));
+        return (pa.name || '').localeCompare(pb.name || '', 'pl');
+      });
+
       keys.forEach(function (id) {
         const p = products[id];
         if (!p) return;
-
-        const card = document.createElement('div');
-        card.className =
-          'bg-panel border border-white/5 rounded-2xl overflow-hidden shadow-xl ' +
-          'hover:border-accent/40 hover:shadow-accent/10 transition-all flex flex-col cursor-pointer';
-        card.setAttribute('data-goto-product', id);
-        card.innerHTML =
-          productImageHtml(p) +
-          '<div class="p-4 flex items-center justify-between gap-2">' +
-          '  <h3 class="text-lg font-semibold text-white">' + esc(p.name) + '</h3>' +
-          '  <svg class="w-5 h-5 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12l-7.5 7.5M21 12H3" /></svg>' +
-          '</div>';
-
-        grid.appendChild(card);
+        grid.appendChild(shopCard(id, p));
       });
 
       renderPrinters();
+      observeShopImages();
+    }
+
+    // HTML karty oferty w sklepie (z serduszkiem W6 i przyciskiem porównania W7)
+    function shopCard(id, p) {
+      const card = document.createElement('div');
+      card.className =
+        'bg-panel border border-white/5 rounded-2xl overflow-hidden shadow-xl ' +
+        'hover:border-accent/40 hover:shadow-accent/10 transition-all flex flex-col cursor-pointer';
+      card.setAttribute('data-goto-product', id);
+      const wished = wishlist.has(id) ? 'text-red-400 border-red-400/50' : 'text-slate-300 hover:text-red-300';
+      const inCmp = compareIds.indexOf(id) !== -1;
+      const cmpCls = inCmp ? 'bg-accent text-slate-900 border-accent' : 'text-slate-300 border-white/20 hover:border-accent';
+      const tagChips = (p.tags || []).map(function (t) {
+        return '<span class="text-[10px] text-slate-400 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">' + esc(t) + '</span>';
+      }).join('');
+      card.innerHTML =
+        '<div class="relative">' +
+          productImageHtml(p) +
+          '<button type="button" data-wish="' + id + '" title="Obserwuj" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center transition ' + wished + '">' +
+            '<svg class="w-4 h-4" fill="' + (wishlist.has(id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>' +
+          '</button>' +
+          '<button type="button" data-compare="' + id + '" title="Dodaj do porównania" class="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm border flex items-center justify-center text-sm font-bold transition ' + cmpCls + '">' + (inCmp ? '&#10003;' : '&#10761;') + '</button>' +
+        '</div>' +
+        '<div class="p-4 flex flex-col gap-2 flex-1">' +
+          '<div class="flex items-center justify-between gap-2">' +
+            '<h3 class="text-lg font-semibold text-white">' + esc(p.name) + '</h3>' +
+            '<svg class="w-5 h-5 shrink-0 text-accent" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5L21 12l-7.5 7.5M21 12H3" /></svg>' +
+          '</div>' +
+          '<div class="flex flex-wrap items-center gap-1.5">' +
+            '<span class="text-xs text-slate-400">' + fmtTime(p.printTimeSec) + '</span>' +
+            (p.weight ? '<span class="text-xs text-slate-400">' + fmtGrams(p.weight) + '</span>' : '') +
+            (tagChips ? '<span class="flex flex-wrap gap-1">' + tagChips + '</span>' : '') +
+          '</div>' +
+          '<div class="mt-auto flex items-center justify-between">' +
+            (p.whistleFreq && (p.tags ? p.tags.indexOf('whistle') !== -1 || p.tags.indexOf('gwizdek') !== -1 : true)
+              ? '<button type="button" data-whistle="' + id + '" class="text-xs text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-1 hover:bg-sky-500/20 transition">Odtwórz</button>'
+              : '<span></span>') +
+            '<button type="button" data-add-cart="' + id + '" class="text-xs px-3 py-1.5 rounded-full bg-accent hover:bg-sky-400 text-slate-900 font-semibold transition">Do koszyka</button>' +
+          '</div>' +
+        '</div>';
+      return card;
+    }
+
+    // Rynek tagów: zbuduj checkboxy polskiego filtru tagów (W3)
+    function renderShopTagFilters() {
+      const wrap = document.getElementById('shop-tag-filters');
+      if (!wrap) return;
+      const noTags = document.getElementById('shop-no-tags');
+      const all = {};
+      Object.keys(products).forEach(function (id) {
+        const p = products[id];
+        if (!p || p.draft) return;
+        (p.tags || []).forEach(function (t) { if (t) all[t] = true; });
+      });
+      const tags = Object.keys(all).sort(function (a, b) { return a.localeCompare(b, 'pl'); });
+      if (tags.length === 0) { if (noTags) noTags.classList.remove('hidden'); wrap.innerHTML = ''; return; }
+      if (noTags) noTags.classList.add('hidden');
+      wrap.innerHTML = tags.map(function (t) {
+        return '<label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-base border border-white/10 text-xs text-slate-300 cursor-pointer hover:border-accent">' +
+          '<input type="checkbox" class="accent-accent shop-tag-cb" value="' + esc(t) + '"' + (shopTags.indexOf(t) !== -1 ? ' checked' : '') + ' />' +
+          esc(t) + '</label>';
+      }).join('');
     }
 
     // Render sekcji drukarek (dwóch kart) na stronie głównej nad ofertami.
@@ -967,7 +1187,12 @@
           : '  <div class="w-full h-full flex items-center justify-center text-slate-600"><svg class="w-24 h-24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg></div>') +
         '  </div>' +
         '  <div class="flex flex-col">' +
+        '    <div class="flex items-center justify-between gap-3">' +
         '    <h1 class="text-2xl font-bold text-white">' + esc(p.name) + '</h1>' +
+        '    <button id="pd-wish" data-pd-wish="' + productId + '" title="Obserwuj" class="shrink-0 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center transition ' + (wishlist.has(productId) ? 'text-red-400 border-red-400/50' : 'text-slate-300 hover:text-red-300') + '">' +
+        '      <svg class="w-5 h-5" fill="' + (wishlist.has(productId) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>' +
+        '    </button>' +
+        '  </div>' +
         (p.desc ? '    <p class="text-slate-400 mt-4 leading-relaxed">' + esc(p.desc) + '</p>' : '') +
         '    <div class="mt-4 flex flex-wrap gap-2">' +
         '      <span class="bg-white/5 border border-white/10 rounded-full px-3 py-1 text-sm text-slate-300">' + fmtTime(p.printTimeSec) + ' druku</span>' +
@@ -989,6 +1214,21 @@
         '</div>';
 
       box.innerHTML = html;
+
+      // W6: serce obserwowania na podstronie produktu
+      var pdWish = document.getElementById('pd-wish');
+      if (pdWish) pdWish.addEventListener('click', function () { toggleWish(productId); renderProductDetail(productId); });
+
+      // W4: Lightbox — klik na zdjęcie galerii otwiera powiększenie
+      var gallWrap = document.getElementById('pd-gallery-wrap');
+      if (gallWrap) {
+        gallWrap.addEventListener('click', function (e) {
+          var im = e.target.closest('.pd-gall-img');
+          if (im) {
+            openLightbox(galleryImages, parseInt(im.dataset.gid, 10) || 0);
+          }
+        });
+      }
 
       if (galleryImages.length > 1) {
         var gallCurrent = 0;
@@ -1059,7 +1299,7 @@
       var img = imageSrcFor(p.imageUrl || p.image);
       if (img && img.length > 20) {
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
-          '  <img src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
+          '  <img data-src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-cover" loading="lazy" />' +
           '</div>';
       }
       return '<div class="aspect-square w-full flex items-center justify-center bg-gradient-to-br from-panel to-base text-slate-600">' +
@@ -1067,6 +1307,27 @@
         '    <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />' +
         '  </svg>' +
         '</div>';
+    }
+
+    // W11: załaduj obrazki (data-src -> src) — na żądanie lub od razu poza siatką
+    let shopImgObserver = null;
+    function hydrateImage(img) {
+      if (img.dataset.src && !img.src) { img.src = img.dataset.src; }
+    }
+    function hydrateImages(root) {
+      if (!root) return;
+      root.querySelectorAll('img[data-src]').forEach(hydrateImage);
+    }
+    function observeShopImages() {
+      var imgs = Array.prototype.slice.call(document.querySelectorAll('#shop-grid img[data-src]'));
+      if (!('IntersectionObserver' in window)) { imgs.forEach(hydrateImage); return; }
+      if (shopImgObserver) shopImgObserver.disconnect();
+      shopImgObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (en) {
+          if (en.isIntersecting) { hydrateImage(en.target); shopImgObserver.unobserve(en.target); }
+        });
+      }, { rootMargin: '200px' });
+      imgs.forEach(function (img) { shopImgObserver.observe(img); });
     }
 
     /* --- Koszyk (drawer) --- */
@@ -1198,7 +1459,7 @@
       badge.textContent = s.count;
       badge.classList.toggle('hidden', s.count === 0);
       var sb = document.getElementById('cart-sidebar-badge');
-      if (sb) sb.textContent = s.count + ' szt. · ' + fmtPrice(s.price);
+      if (sb) sb.textContent = s.count + ' szt.';
     }
 
     function renderCheckoutFooter(container, label, action) {
@@ -1261,7 +1522,6 @@
 
     // Krok 4: Podsumowanie (lista + przycisk wejścia do kolejki)
     function renderCheckoutPodsumowanie(container) {
-      var s = cartSummary();
       var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
       var modeNote = settings.mode === 'queue'
         ? 'Tryb zbierania kolejki — zamówienie poczeka na realizację.'
@@ -1273,10 +1533,9 @@
           ? '<p class="text-center text-slate-500 py-2">Koszyk jest pusty.</p>'
           : ids.map(function (id) {
             var p = products[id]; var qty = cart[id];
-            return '<div class="flex justify-between text-sm"><span class="text-slate-300">' + esc(p.name) + ' &times; ' + qty + '</span><span class="text-white font-medium">' + fmtPrice(productPrice(p) * qty) + '</span></div>';
+            return '<div class="flex justify-between text-sm"><span class="text-slate-300">' + esc(p.name) + ' &times; ' + qty + '</span><span class="text-white font-medium">' + fmtTimeMini(p.printTimeSec * qty) + '</span></div>';
           }).join('') +
-          '<div class="flex justify-between border-t border-white/10 pt-2 text-sm"><span class="text-slate-400">Łączna waga</span><span class="text-white">' + fmtGrams(cartWeight()) + '</span></div>' +
-          '<div class="flex justify-between text-sm"><span class="text-slate-400">Razem</span><span class="text-white font-bold">' + fmtPrice(s.price) + '</span></div>') +
+          '<div class="flex justify-between border-t border-white/10 pt-2 text-sm"><span class="text-slate-400">Łączna waga</span><span class="text-white">' + fmtGrams(cartWeight()) + '</span></div>') +
         '  </div>' +
         '  <div class="bg-base/60 border border-white/10 rounded-xl px-4 py-3 text-sm space-y-1">' +
         '    <div class="flex justify-between"><span class="text-slate-400">Odbierający</span><span class="text-white">' + esc(checkoutName) + ' ' + esc(checkoutInitial ? checkoutInitial + '.' : '') + '</span></div>' +
@@ -1365,7 +1624,7 @@
       var orderCode = genOrderCode();
 
       var items = [];
-      var totalWeight = 0, totalPrice = 0, backlog = false;
+      var totalWeight = 0, backlog = false;
       var expanded = expandBundles(Object.keys(cart).map(function (id) { return { productId: id, qty: cart[id] }; }));
       expanded.forEach(function (ci) {
         var p = products[ci.productId];
@@ -1377,11 +1636,9 @@
           productName: p.name,
           weight: p.weight || 0,
           printTimeSec: p.printTimeSec || 0,
-          qty: qty,
-          pricePerGram: settings.pricePerGram
+          qty: qty
         });
         totalWeight += (p.weight || 0) * qty;
-        totalPrice += (p.printTimeSec || 0) * qty * settings.pricePerGram;
       });
 
       var estPrintSec = estPrintTime(expanded);
@@ -1395,7 +1652,6 @@
         payment: 'Brak (rozliczenie przy odbiorze w szkole)',
         items: items,
         totalWeight: totalWeight,
-        totalPrice: totalPrice,
         estPrintSec: estPrintSec,
         orderCode: orderCode,
         status: 'W kolejce',
@@ -1576,7 +1832,7 @@
         itemsHtml +=
           '<div class="flex justify-between py-1">' +
           '  <span class="text-slate-400">' + esc(it.productName) + ' (' + fmtTime(it.printTimeSec) + ' x ' + it.qty + ')</span>' +
-          '  <span class="text-white">' + fmtPrice((it.printTimeSec || 0) * it.qty * (it.pricePerGram || 0)) + '</span>' +
+          '  <span class="text-white">' + fmtTime(it.printTimeSec * it.qty) + '</span>' +
           '</div>';
       });
 
@@ -1594,6 +1850,7 @@
         '      </div>' +
         '      <span class="text-sm font-bold ' + statusColor(order.status).split(' ')[0] + '">' + esc(order.status) + '</span>' +
         '    </div>' +
+        '    <div class="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1"><span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block"></span>Na żywo</div>' +
         (order.status === 'Drukuje się' && order.printer && PRINTERS[order.printer]
           ? '<p class="mt-2 text-sm text-emerald-300">Drukuje na: <strong>' + esc(PRINTERS[order.printer].name) + '</strong></p>'
           : '') +
@@ -1602,7 +1859,6 @@
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Dostawa</span><span class="text-white">' + esc(order.delivery || 'Szkoła') + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Szacowany czas druku</span><span class="text-white">' + fmtTimeLong(order.estPrintSec) + '</span></div>' +
         '      <div class="flex justify-between py-1"><span class="text-slate-400">Płatność</span><span class="text-white">' + esc(order.payment || 'Brak (przy odbiorze)') + '</span></div>' +
-        '      <div class="flex justify-between py-1"><span class="text-slate-400">Razem</span><span class="text-white font-bold">' + fmtPrice(order.totalPrice) + '</span></div>' +
         '    </div>' +
         '  </div>' +
         '  <div class="bg-panel border border-white/10 rounded-2xl p-5">' +
@@ -1626,107 +1882,45 @@
        renderAdminProducts();
        renderAdminOrders();
        renderPrintQueue();
-       renderStats();
-       renderChart();
+       renderBulkStock();
        initBundleUI();
      }
 
     function renderAdminSettings() {
-      document.getElementById('set-price').value = settings.pricePerGram || 0;
       document.getElementById('set-banner').value = settings.banner || '';
       document.getElementById('set-mode').value = settings.mode || '';
     }
 
-    function renderStats() {
-      let total = 0, printing = 0, queued = 0, deliveredQty = 0, revenue = 0;
-
-      Object.values(orders).forEach(function (o) {
-        if (!o || o.isDeleted) return;
-        total++;
-        if (o.status === 'Drukuje się') printing++;
-        if (o.status === 'W kolejce') queued++;
-        if (o.status === 'W drodze' || o.status === 'Doręczone') {
-          deliveredQty += (o.estPrintSec || 0);
-          revenue += (o.totalPrice || 0);
-        }
-      });
-
-      document.getElementById('stat-total').textContent = total;
-      document.getElementById('stat-printing').textContent = printing;
-      document.getElementById('stat-queued').textContent = queued;
-      document.getElementById('stat-delivered').textContent = fmtTime(deliveredQty);
-      document.getElementById('stat-revenue').textContent = fmtPrice(revenue);
+    /* --- W9: zbiorcza edycja stanów magazynowych --- */
+    function renderBulkStock() {
+      var list = document.getElementById('bulk-stock-list');
+      if (!list) return;
+      var keys = Object.keys(products).filter(function (id) { return !products[id].draft; });
+      if (keys.length === 0) { list.innerHTML = '<p class="text-slate-500 text-sm col-span-full">Brak opublikowanych produktów.</p>'; return; }
+      list.innerHTML = keys.map(function (id) {
+        var p = products[id];
+        return '<div class="bg-base/50 border border-white/10 rounded-xl p-3">' +
+          '<p class="text-sm font-semibold text-white truncate">' + esc(p.name) + '</p>' +
+          '<div class="flex items-center gap-2 mt-2">' +
+          '  <label class="text-xs text-slate-400 shrink-0">Stan</label>' +
+          '  <input type="number" min="0" value="' + (p.stock || 0) + '" data-bulk-stock="' + id + '" class="w-24 bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center focus:border-accent focus:outline-none" />' +
+          '  <span class="text-xs text-slate-500">szt.</span>' +
+          '</div></div>';
+      }).join('');
     }
-
-    // Wykres: liczba zamówień i waga (gramy) na ostatnie 7 dni (D7)
-    function renderChart() {
-      const ordersByDay = {};
-      const gramsByDay = {};
-      const today = new Date();
-      const labels = [];
-
-      for (let i = 6; i >= 0; i--) {
-        const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        labels.push(d.toLocaleDateString('pl-PL', { weekday: 'short', day: 'numeric', month: 'numeric' }));
-        ordersByDay[key] = 0;
-        gramsByDay[key] = 0;
-      }
-
-      Object.values(orders).forEach(function (o) {
-        if (!o || o.isDeleted) return;
-        const d = new Date(o.createdAt || 0);
-        const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-        if (ordersByDay.hasOwnProperty(key)) {
-          ordersByDay[key]++;
-          // Waga/czas druku licz tylko dla zrealizowanych (W drodze / Doręczone),
-          // aby nowe zamówienia w kolejce/druku nie zawyżały statystyk.
-          if (o.status === 'W drodze' || o.status === 'Doręczone') {
-            gramsByDay[key] += (o.estPrintSec || 0);
-          }
-        }
+    function saveBulkStock() {
+      var inputs = document.querySelectorAll('#bulk-stock-list [data-bulk-stock]');
+      var batch = db.batch();
+      var any = false;
+      inputs.forEach(function (inp) {
+        var id = inp.dataset.bulkStock;
+        var val = parseInt(inp.value, 10);
+        if (isNaN(val) || val < 0) { alert('Nieprawidłowy stan dla: ' + esc(products[id] ? products[id].name : id)); return; }
+        batch.update(db.collection('products').doc(id), { stock: val });
+        any = true;
       });
-
-      const maxOrders = Math.max(1, ...Object.values(ordersByDay));
-      const maxGrams = Math.max(1, ...Object.values(gramsByDay));
-
-      const wrap = document.getElementById('chart-bars');
-      if (!wrap) return;
-
-      // Wykres liczby zamówień
-      let html = '';
-      labels.forEach(function (lbl, i) {
-        const key = Object.keys(ordersByDay)[i];
-        const val = ordersByDay[key];
-        const h = (val / maxOrders) * 100;
-        html +=
-          '<div class="flex flex-col items-center">' +
-          '  <div class="w-6 h-28 flex items-end bg-slate-900/60 rounded-t-sm overflow-hidden border border-white/5">' +
-          '    <div class="w-full bg-cyan-400/80 transition-all duration-500" style="height:' + h + '%"></div>' +
-          '  </div>' +
-          '  <span class="text-[10px] text-slate-500 mt-1">' + lbl + '</span>' +
-          '  <span class="text-[10px] text-white font-medium">' + val + '</span>' +
-          '</div>';
-      });
-      wrap.innerHTML = html;
-
-      const ghtml = [];
-      labels.forEach(function (lbl, i) {
-        const key = Object.keys(gramsByDay)[i];
-        const val = gramsByDay[key];
-        const h = (val / maxGrams) * 100;
-        ghtml.push(
-          '<div class="flex flex-col items-center">' +
-          '  <div class="w-6 h-28 flex items-end bg-slate-900/60 rounded-t-sm overflow-hidden border border-white/5">' +
-          '    <div class="w-full bg-emerald-400/80 transition-all duration-500" style="height:' + h + '%" title="' + val + ' gr"></div>' +
-          '  </div>' +
-          '  <span class="text-[10px] text-slate-500 mt-1">' + lbl + '</span>' +
-          '  <span class="text-[10px] text-white font-medium">' + fmtTime(val) + '</span>' +
-          '</div>'
-        );
-      });
-      const gw = document.getElementById('chart-grams');
-      if (gw) gw.innerHTML = ghtml.join('');
+      if (!any) return;
+      batch.commit().then(function () { flash('Stany magazynowe zaktualizowane.'); }).catch(function (e) { alert('Błąd: ' + e.message); });
     }
 
     /* --- Kolejka druku (posortowana wg czasu) --- */
@@ -1754,7 +1948,7 @@
           '<div class="flex-1">' +
           '  <span class="font-bold text-sm text-white">#' + esc(o.orderCode || '?') + '</span> ' +
           '  <span class="text-sm text-slate-300">' + esc(o.name) + ' ' + esc(o.className) + '</span>' +
-          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + ' | ' + fmtPrice(o.totalPrice) + '</p>' +
+          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + '</p>' +
           '</div>' +
           '<div class="flex gap-1">' +
           (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition">Drukuj</button>' : '') +
@@ -1792,8 +1986,8 @@
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
-          '  <p class="font-semibold text-white truncate">' + esc(p.name) + '</p>' +
-          '  <p class="text-sm text-slate-400">' + fmtTime(p.printTimeSec) + ' druku x ' + fmtPerGram(settings.pricePerGram) + ' = ' + fmtPrice(productPrice(p)) +
+          '  <p class="font-semibold text-white truncate">' + esc(p.name) + (p.draft ? ' <span class="text-[10px] text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-full px-2 py-0.5 ml-1">Draft</span>' : '') + '</p>' +
+          '  <p class="text-sm text-slate-400">' + fmtTime(p.printTimeSec) + ' druku' +
           (p.weight ? ' (' + fmtGrams(p.weight) + ')' : '') + '</p>' +
           '</div>' +
           '<div class="flex items-center gap-2">' +
@@ -1806,6 +2000,7 @@
             ? '  <button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-sm px-2 py-1" title="' + esc(p.modelFile.name) + '">Plik 3D</button>'
             : '') +
           '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-sm px-2 py-1">Edytuj</button>' +
+          '  <button data-preview-product="' + id + '" class="text-sky-400 hover:text-sky-300 text-sm px-2 py-1">Podgląd</button>' +
           '  <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-2 py-1">Usuń</button>' +
           '</div>';
 
@@ -1838,6 +2033,12 @@
       list.querySelectorAll('[data-edit-product]').forEach(function (btn) {
         btn.addEventListener('click', function () {
           loadProductIntoForm(btn.dataset.editProduct);
+        });
+      });
+
+      list.querySelectorAll('[data-preview-product]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          window.open(pageUrl() + '?p=' + encodeURIComponent(btn.dataset.previewProduct), '_blank');
         });
       });
 
@@ -2041,6 +2242,7 @@
       document.getElementById('product-manual-time-h').value = Math.floor((p.manualTimeSec || 0) / 3600) || '';
       document.getElementById('product-manual-time-m').value = Math.floor(((p.manualTimeSec || 0) % 3600) / 60) || '';
       document.getElementById('product-stock').value = p.stock || 0;
+      document.getElementById('product-draft').checked = !!p.draft;
       document.getElementById('product-whistle-freq').value = Array.isArray(p.whistleFreq) ? p.whistleFreq.join(', ') : (p.whistleFreq || '');
       document.getElementById('product-tags').value = (p.tags || []).join(', ');
       var savedColor = p.color || 'czekolada';
@@ -2112,7 +2314,7 @@
       if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) — jest wymagany (z niego powstaje miniaturka).'); return; }
       if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
 
-      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink, color: productColor, photos: photos };
+      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink, color: productColor, photos: photos, draft: !!document.getElementById('product-draft').checked };
 
       if (editingProductId) {
         if (imageDataUrl) {
@@ -2152,6 +2354,8 @@
       document.getElementById('product-model-info').textContent = '';
       document.getElementById('product-color').value = 'czekolada';
       if (window.__setModelColor) window.__setModelColor('czekolada', true);
+      var draftCb = document.getElementById('product-draft');
+      if (draftCb) draftCb.checked = false;
       productPhotos = [];
       renderPhotoPreviews();
       resetBundleUI();
@@ -2162,12 +2366,10 @@
     /* --- Zapis ustawień --- */
     function handleSettingsSubmit(e) {
       e.preventDefault();
-      const pricePerGram = parseFloat(document.getElementById('set-price').value);
       const banner = document.getElementById('set-banner').value.trim();
       const mode = document.getElementById('set-mode').value;
-      if (isNaN(pricePerGram) || pricePerGram < 0) { alert('Podaj poprawną cenę za gram (0 lub więcej).'); return; }
 
-      db.collection('settings').doc('main').set({ pricePerGram: pricePerGram, mode: mode, banner: banner, adminPasswordHash: settings.adminPasswordHash || '' })
+      db.collection('settings').doc('main').set({ mode: mode, banner: banner, adminPasswordHash: settings.adminPasswordHash || '' })
         .then(function () { flash('Ustawienia zapisane.'); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
@@ -2227,7 +2429,7 @@
         (o.className ? '<p class="text-xs text-slate-500">' + esc(o.className) + '</p>' : '') +
         '</td>' +
         '<td class="py-3 px-3 text-sm text-slate-300">' + itemsText + '</td>' +
-        '<td class="py-3 px-3 text-sm text-slate-300">' + timeCol + '<br/><span class="text-xs text-slate-500">' + fmtPrice(o.totalPrice) + '</span></td>' +
+        '<td class="py-3 px-3 text-sm text-slate-300">' + timeCol + '<br/><span class="text-xs text-slate-500">' + fmtGrams(o.totalWeight) + '</span></td>' +
         '<td class="py-3 px-3 text-sm text-slate-400">' + fmtDate(o.createdAt) + '</td>' +
         '<td class="py-3 px-3">' +
         (isArchived
@@ -2308,6 +2510,116 @@
       flashTimer = setTimeout(function () {
         el.classList.add('opacity-0', 'pointer-events-none');
       }, 2200);
+    }
+
+    /* --- W6: modal listy życzeń --- */
+    function renderWishList() {
+      const list = document.getElementById('wish-list');
+      const ids = Array.from(wishlist).filter(function (id) { return products[id]; });
+      document.getElementById('wish-count').textContent = ids.length;
+      if (ids.length === 0) {
+        list.innerHTML = '<p class="text-slate-500 text-sm py-4 text-center">Brak obserwowanych ofert.</p>';
+        return;
+      }
+      list.innerHTML = ids.map(function (id) {
+        const p = products[id];
+        return '<div class="flex items-center gap-3 bg-base/60 border border-white/10 rounded-xl p-3">' +
+          '<div class="w-12 h-12 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
+          ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
+            ? '<img data-src="' + esc(imageSrcFor(p.imageUrl || p.image)) + '" alt="" class="w-full h-full object-cover" loading="lazy" />'
+            : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">—</div>') +
+          '</div>' +
+          '<div class="flex-1 min-w-0">' +
+          '  <p class="font-medium text-white text-sm truncate">' + esc(p.name) + '</p>' +
+          '  <p class="text-xs text-slate-500">' + fmtTime(p.printTimeSec) + (p.weight ? ' · ' + fmtGrams(p.weight) : '') + '</p>' +
+          '</div>' +
+          '<button data-wish-open="' + id + '" class="text-xs text-accent hover:text-sky-300 shrink-0">Otwórz</button>' +
+          '<button data-wish-rm="' + id + '" class="text-xs text-red-400 hover:text-red-300 shrink-0">Usuń</button>' +
+          '</div>';
+      }).join('');
+      hydrateImages(list);
+    }
+
+    /* --- W7: overlay porównywarki --- */
+    function renderCompareResult() {
+      const box = document.getElementById('compare-result');
+      const ids = compareIds.filter(function (id) { return products[id]; });
+      if (ids.length < 2) {
+        box.innerHTML = '<p class="text-slate-400 text-sm text-center py-4">Dodaj co najmniej 2 oferty do porównania.</p>';
+        return;
+      }
+      var rows = [
+        { label: 'Obraz', val: function (p, id) {
+          var img = imageSrcFor(p.imageUrl || p.image);
+          return img && img.length > 20
+            ? '<img data-src="' + esc(img) + '" alt="" class="w-full aspect-square object-cover rounded-lg bg-black/40" loading="lazy" />'
+            : '<div class="w-full aspect-square flex items-center justify-center text-slate-600 text-xs bg-black/40 rounded-lg">Brak</div>';
+        } },
+        { label: 'Nazwa', val: function (p) { return '<span class="font-semibold text-white">' + esc(p.name) + '</span>'; } },
+        { label: 'Czas druku', val: function (p) { return fmtTimeLong(p.printTimeSec); } },
+        { label: 'Waga', val: function (p) { return p.weight ? fmtGrams(p.weight) : '—'; } },
+        { label: 'Tagi', val: function (p) { return (p.tags || []).length ? (p.tags || []).map(esc).join(', ') : '—'; } },
+        { label: 'Stan magazynu', val: function (p) { return p.stock != null ? p.stock + ' szt.' : '—'; } },
+        { label: 'Gwizdek', val: function (p) { return p.whistleFreq ? (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function (f) { return f >= 1000 ? (f / 1000).toFixed(1) + 'kHz' : f + 'Hz'; }).join(' + ') : p.whistleFreq) : '—'; } }
+      ];
+      box.innerHTML =
+        '<table class="w-full text-sm border-collapse min-w-[500px]">' +
+        '<thead><tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">' +
+        '<th class="py-2 pr-3 text-left w-28"></th>' +
+        ids.map(function (id) { return '<th class="py-2 px-3 text-left"></th>'; }).join('') +
+        '</tr></thead><tbody>' +
+        rows.map(function (row) {
+          return '<tr class="border-b border-white/5">' +
+            '<td class="py-3 pr-3 text-xs text-slate-500">' + row.label + '</td>' +
+            ids.map(function (id) { return '<td class="py-3 px-3">' + row.val(products[id], id) + '</td>'; }).join('') +
+            '</tr>';
+        }).join('') +
+        '</tbody></table>';
+      hydrateImages(box);
+    }
+
+    /* --- W4: lightbox galerii --- */
+    let lightboxImages = [];
+    let lightboxIndex = 0;
+    function openLightbox(images, idx) {
+      if (!images || images.length === 0) return;
+      lightboxImages = images.slice();
+      lightboxIndex = (idx || 0) % images.length;
+      showLightbox();
+      document.getElementById('lightbox').classList.remove('hidden');
+    }
+    function showLightbox() {
+      const img = document.getElementById('lightbox-img');
+      img.src = lightboxImages[lightboxIndex] || '';
+    }
+    function closeLightbox() { document.getElementById('lightbox').classList.add('hidden'); }
+    function lightboxStep(d) { lightboxIndex = (lightboxIndex + d + lightboxImages.length) % lightboxImages.length; showLightbox(); }
+
+    /* --- W5: powiadomienie o nowym zamówieniu (bez dźwięku) --- */
+    let adminLastMaxTs = null;
+    let adminWarnedOnce = false;
+    function checkNewOrderAdmin(ordersMap) {
+      let maxTs = 0;
+      Object.keys(ordersMap).forEach(function (id) {
+        const o = ordersMap[id];
+        if (o && !o.isDeleted && o.createdAt) maxTs = Math.max(maxTs, o.createdAt);
+      });
+      const firstRun = adminLastMaxTs === null;
+      if (maxTs > (adminLastMaxTs || 0) && !firstRun) {
+        if (isViewOpen('view-admin') && isAdminAuthed()) {
+          flash('Nowe zamówienie w kolejce');
+          pulseAdminBadge();
+        }
+      }
+      adminLastMaxTs = maxTs;
+    }
+    function pulseAdminBadge() {
+      const b = document.getElementById('admin-new-order');
+      if (!b) return;
+      b.classList.remove('hidden');
+      b.classList.add('animate-pulse');
+      clearTimeout(pulseAdminBadge._t);
+      pulseAdminBadge._t = setTimeout(function () { b.classList.add('hidden'); }, 8000);
     }
 
     /* ------------------------------------------------------------------
@@ -2394,12 +2706,29 @@
        ------------------------------------------------------------------ */
     /* --- Event delegation (jednorazowa instalacja) --- */
     function setupEventDelegation() {
-      // Sklep: koszyk, gwizdek, pobieranie pliku
+      // Sklep: koszyk, gwizdek, pobieranie pliku, życzenia, porównanie
       var grid = document.getElementById('shop-grid');
       if (grid) grid.addEventListener('click', function (e) {
         var btn;
+        btn = e.target.closest('[data-wish]');
+        if (btn) {
+          e.stopPropagation();
+          var wid = btn.dataset.wish;
+          toggleWish(wid);
+          renderShop();
+          flash(wishlist.has(wid) ? 'Dodano do ulubionych' : 'Usunięto z ulubionych');
+          return;
+        }
+        btn = e.target.closest('[data-compare]');
+        if (btn) {
+          e.stopPropagation();
+          toggleCompare(btn.dataset.compare);
+          renderShop();
+          return;
+        }
         btn = e.target.closest('[data-add-cart]');
         if (btn && !btn.disabled) {
+          e.stopPropagation();
           var id = btn.dataset.addCart;
           cart[id] = (cart[id] || 0) + 1;
           saveCart();
@@ -2414,6 +2743,7 @@
         }
         btn = e.target.closest('[data-whistle]');
         if (btn) {
+          e.stopPropagation();
           var wp = products[btn.dataset.whistle];
           if (wp && wp.whistleFreq) playWhistle(wp.whistleFreq);
           return;
@@ -2530,12 +2860,16 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+      loadWishlist();
+      loadThemePrefs();
       loadCart();
       updateCartBadge();
+      updateWishBadge();
       startListeners();
       setupEventDelegation();
       route();
       renderCartStep(); // wypełnij sidebar (desktop) na start
+      renderShopTagFilters();
       // Zasoby (tła SVG + obrazy drukarek) — po załadowaniu odśwież sekcję drukarek
       loadAssets().then(function () { renderPrinters(); }).catch(function (e) { console.error('assets:', e); });
 
@@ -2546,6 +2880,75 @@
       document.getElementById('track-lookup-open').addEventListener('click', openTrackLookup);
       document.getElementById('track-lookup-close').addEventListener('click', closeTrackLookup);
       document.getElementById('track-lookup-form').addEventListener('submit', handleTrackLookup);
+
+      // W3: narrzędzia sklepu
+      var shopSearch = document.getElementById('shop-search');
+      if (shopSearch) {
+        var searchTimer = null;
+        shopSearch.value = shopQuery;
+        shopSearch.addEventListener('input', function () {
+          var v = this.value;
+          clearTimeout(searchTimer);
+          searchTimer = setTimeout(function () { shopQuery = v; renderShop(); }, 180);
+        });
+      }
+      var shopSortEl = document.getElementById('shop-sort');
+      if (shopSortEl) { shopSortEl.value = shopSort; shopSortEl.addEventListener('change', function () { shopSort = this.value; renderShop(); }); }
+      var shopWishOnlyCb = document.getElementById('shop-wish-only');
+      if (shopWishOnlyCb) { shopWishOnlyCb.checked = shopWishOnly; shopWishOnlyCb.addEventListener('change', function () { shopWishOnly = this.checked; renderShop(); }); }
+      var tagFilters = document.getElementById('shop-tag-filters');
+      if (tagFilters) tagFilters.addEventListener('change', function (e) {
+        if (e.target.classList.contains('shop-tag-cb')) {
+          shopTags = Array.prototype.slice.call(tagFilters.querySelectorAll('.shop-tag-cb')).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
+          renderShop();
+        }
+      });
+
+      // W6: lista życzeń
+      document.getElementById('wish-open').addEventListener('click', function () { renderWishList(); document.getElementById('wish-modal').classList.remove('hidden'); });
+      document.getElementById('wish-close').addEventListener('click', function () { document.getElementById('wish-modal').classList.add('hidden'); });
+      document.getElementById('wish-modal').addEventListener('click', function (e) {
+        if (e.target === this) { this.classList.add('hidden'); return; }
+        var ob = e.target.closest('[data-wish-open]');
+        if (ob) { this.classList.add('hidden'); window.location.search = '?p=' + encodeURIComponent(ob.dataset.wishOpen); return; }
+        var rm = e.target.closest('[data-wish-rm]');
+        if (rm) { toggleWish(rm.dataset.wishRm); renderWishList(); renderShop(); }
+      });
+
+      // W12: motyw + akcent
+      document.getElementById('theme-open').addEventListener('click', function () { document.getElementById('theme-modal').classList.remove('hidden'); });
+      document.getElementById('theme-close').addEventListener('click', function () { document.getElementById('theme-modal').classList.add('hidden'); });
+      document.getElementById('theme-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
+      document.getElementById('theme-mode-buttons').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-theme]');
+        if (b) { currentTheme = b.dataset.theme; applyTheme(); }
+      });
+      document.getElementById('theme-accent-buttons').addEventListener('click', function (e) {
+        var b = e.target.closest('[data-accent]');
+        if (b) { currentAccent = b.dataset.accent; applyTheme(); }
+      });
+
+      // W7: porównywarka
+      document.getElementById('compare-open').addEventListener('click', function () { renderCompareResult(); document.getElementById('compare-modal').classList.remove('hidden'); });
+      document.getElementById('compare-close').addEventListener('click', function () { document.getElementById('compare-modal').classList.add('hidden'); });
+      document.getElementById('compare-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
+      document.getElementById('compare-clear').addEventListener('click', function () { compareIds = []; renderCompareBar(); renderShop(); });
+      document.getElementById('compare-items').addEventListener('click', function (e) {
+        var rm = e.target.closest('[data-compare-remove]');
+        if (rm) { var i = compareIds.indexOf(rm.dataset.compareRemove); if (i >= 0) compareIds.splice(i, 1); renderCompareBar(); renderShop(); }
+      });
+
+      // W4: lightbox
+      document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+      document.getElementById('lightbox-prev').addEventListener('click', function () { lightboxStep(-1); });
+      document.getElementById('lightbox-next').addEventListener('click', function () { lightboxStep(1); });
+      document.getElementById('lightbox').addEventListener('click', function (e) { if (e.target === this) closeLightbox(); });
+      document.addEventListener('keydown', function (e) {
+        if (document.getElementById('lightbox').classList.contains('hidden')) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowLeft') lightboxStep(-1);
+        else if (e.key === 'ArrowRight') lightboxStep(1);
+      });
 
       // Logowanie do panelu
       document.getElementById('admin-login-form').addEventListener('submit', handleAdminLogin);
@@ -2563,6 +2966,10 @@
         }
       });
       document.getElementById('admin-logout').addEventListener('click', adminLogout);
+
+      // W9: zbiorcza edycja stanów
+      var bulkSave = document.getElementById('bulk-stock-save');
+      if (bulkSave) bulkSave.addEventListener('click', saveBulkStock);
 
       // Zamykanie modali po kliknięciu w tło
       document.getElementById('cart-drawer').addEventListener('click', function (e) { if (e.target === this) closeCart(); });
@@ -2601,6 +3008,14 @@
           class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">QR</button>
         <button id="track-lookup-open" title="Śledź zamówienie po numerze"
           class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Śledź paczkę</button>
+        <button id="wish-open" title="Twoje obserwowane"
+          class="relative text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">
+          <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-3px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+          Ulubione
+          <span id="wish-badge" class="hidden min-w-5 h-5 px-1 ml-1 rounded-full bg-accent text-slate-900 text-xs font-bold items-center justify-center"></span>
+        </button>
+        <button id="theme-open" title="Wygląd i kolory"
+          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Wygląd</button>
         <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
       </div>
     </header>
@@ -2627,6 +3042,36 @@
       <section>
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-sm uppercase tracking-wide text-slate-500 font-semibold">Dostępne oferty</h3>
+        </div>
+
+        <!-- PASEK NARZĘDZI (W3): wyszukiwarka, filtry, sortowanie -->
+        <div class="bg-panel border border-white/10 rounded-2xl p-4 mb-6">
+          <div class="flex flex-col lg:flex-row gap-3">
+            <div class="flex-1">
+              <input id="shop-search" type="text" placeholder="Szukaj po nazwie lub tagach..." value=""
+                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:border-accent focus:outline-none" />
+            </div>
+            <div>
+              <select id="shop-sort"
+                class="w-full lg:w-auto bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:border-accent focus:outline-none">
+                <option value="name">Nazwa (A–Z)</option>
+                <option value="time">Czas druku (od najkrótszego)</option>
+                <option value="weight">Waga (od najlżejszego)</option>
+                <option value="stock">Stan magazynowy</option>
+              </select>
+            </div>
+            <div>
+              <label class="inline-flex items-center gap-2 h-full px-3 py-2.5 rounded-xl bg-base border border-white/10 text-sm text-slate-300 cursor-pointer">
+                <input id="shop-wish-only" type="checkbox" class="accent-accent" />
+                <span>Obserwowane</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-3">
+            <p class="text-xs text-slate-500 mb-2">Filtruj po tagach:</p>
+            <div id="shop-tag-filters" class="flex flex-wrap gap-2"></div>
+            <p id="shop-no-tags" class="text-xs text-slate-500 hidden">Brak tagów.</p>
+          </div>
         </div>
         <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </section>
@@ -2768,70 +3213,18 @@
           <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
         </div>
         <button id="admin-logout" class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-red-400/40 hover:text-red-300 transition-colors">Wyloguj</button>
+        <span id="admin-new-order" class="hidden text-xs px-2.5 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/40 text-emerald-300 font-semibold">● Nowe zamówienie</span>
         <a href="." class="text-xs text-slate-500 hover:text-accent transition-colors">Widok sklepu</a>
       </div>
     </header>
 
     <main class="max-w-7xl mx-auto px-4 py-8">
 
-      <!-- STATYSTYKI -->
-      <section class="mb-10">
-        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki na żywo</h2>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">Wszystkie zamówienia</p>
-            <p id="stat-total" class="text-2xl font-bold text-white mt-1">0</p>
-          </div>
-          <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">Aktywne wydruki</p>
-            <p id="stat-printing" class="text-2xl font-bold text-cyan-300 mt-1">0</p>
-          </div>
-          <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">W kolejce</p>
-            <p id="stat-queued" class="text-2xl font-bold text-amber-300 mt-1">0</p>
-          </div>
-          <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">Wydrukowano (czas)</p>
-            <p id="stat-delivered" class="text-2xl font-bold text-emerald-300 mt-1">0</p>
-          </div>
-          <div class="bg-panel border border-white/10 rounded-2xl p-4">
-            <p class="text-xs text-slate-500">Szacowany zarobek</p>
-            <p id="stat-revenue" class="text-2xl font-bold text-accent mt-1">0,00 zł</p>
-          </div>
-        </div>
-       </section>
-
-      <!-- WYKRES (ostatnie 7 dni) -->
-      <section class="mb-10">
-        <h2 class="text-sm uppercase tracking-wide text-slate-500 font-semibold mb-4">Statystyki tygodniowe</h2>
-        <div class="grid lg:grid-cols-2 gap-8">
-          <!-- Liczba zamówień -->
-          <div class="bg-panel border border-white/10 rounded-2xl p-6">
-            <p class="text-sm font-semibold text-white mb-2">Zamówienia (liczba / dzień)</p>
-            <div class="flex items-end justify-around gap-1 h-40">
-              <div id="chart-bars" class="flex items-end justify-around w-full gap-1"></div>
-            </div>
-          </div>
-          <!-- Łączna waga -->
-          <div class="bg-panel border border-white/10 rounded-2xl p-6">
-            <p class="text-sm font-semibold text-white mb-2">Wydrukowano (czas / dzień)</p>
-            <div class="flex items-end justify-around gap-1 h-40">
-              <div id="chart-grams" class="flex items-end justify-around w-full gap-1"></div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- USTAWIENIA (cena za gram, tryb, baner) -->
+      <!-- USTAWIENIA (tryb, baner) -->
       <section class="mb-10">
         <div class="bg-panel border border-white/10 rounded-2xl p-6">
           <h3 class="text-lg font-bold text-white mb-4">Ustawienia sklepu</h3>
           <form id="settings-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-              <label class="block text-sm text-slate-400 mb-1">Cena za gram (zł/gr)</label>
-              <input id="set-price" type="number" step="0.01" min="0" required placeholder="np. 0.20"
-                class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
-            </div>
             <div>
               <label class="block text-sm text-slate-400 mb-1">Tryb</label>
               <select id="set-mode"
@@ -2879,6 +3272,10 @@
                 <label class="block text-sm text-slate-400 mb-1">Stan magazynowy</label>
                 <input id="product-stock" type="number" min="0" value="0"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                  <input id="product-draft" type="checkbox" class="accent-accent" />
+                  <span class="text-xs text-slate-400">Draft — ukryj w sklepie (W10)</span>
+                </label>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -3045,6 +3442,17 @@
         </div>
       </section>
 
+      <!-- ZBIORCZA EDYCJA STANÓW (W9) -->
+      <section class="mb-10">
+        <div class="bg-panel border border-white/10 rounded-2xl p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-white">Zbiorcza edycja stanów</h3>
+            <button id="bulk-stock-save" class="px-4 py-2 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 text-sm transition-all">Zapisz wszystkie</button>
+          </div>
+          <div id="bulk-stock-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        </div>
+      </section>
+
       <!-- KOLEJKA DRUKU -->
       <section class="mb-10">
         <div class="bg-panel border border-white/10 rounded-2xl p-6">
@@ -3063,7 +3471,7 @@
                 <th class="py-3 px-3">ID</th>
                 <th class="py-3 px-3">Imię / Klasa</th>
                 <th class="py-3 px-3">Produkt</th>
-                <th class="py-3 px-3">Waga / Cena</th>
+                <th class="py-3 px-3">Waga / Czas</th>
                 <th class="py-3 px-3">Data</th>
                 <th class="py-3 px-3">Status</th>
                 <th class="py-3 px-3">Szac. czas dostawy</th>
@@ -3542,13 +3950,75 @@
 
   <!-- Stały prawy sidebar koszyka (desktop) — zawsze widoczny na lg -->
   <aside id="cart-sidebar" class="hidden lg:flex fixed top-0 right-0 bottom-0 w-[380px] z-30 bg-panel border-l border-white/10 flex-col shadow-2xl">
-    <div class="flex items-center justify-between p-4 border-b border-white/10">
-      <h3 class="text-lg font-bold text-white">Koszyk</h3>
-      <span id="cart-sidebar-badge" class="text-xs text-slate-400"></span>
+    <div class="p-4 border-b border-white/10 space-y-2">
+      <div class="flex items-center justify-between">
+        <h3 class="text-lg font-bold text-white">Koszyk</h3>
+        <span id="cart-sidebar-badge" class="text-xs text-slate-400"></span>
+      </div>
+      <div id="cart-sidebar-header"></div>
     </div>
     <div id="cart-sidebar-body" class="flex-1 overflow-y-auto px-4"></div>
     <div id="cart-sidebar-footer" class="border-t border-white/10 p-4 space-y-2"></div>
   </aside>
+
+  <!-- ============ LISTA ŻYCZEŃ (modal) ============ -->
+  <div id="wish-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-4">Obserwowane oferty</h3>
+      <div id="wish-count-label" class="text-sm text-slate-400 mb-3">
+        <span id="wish-count">0</span> produktów
+      </div>
+      <div id="wish-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
+      <button id="wish-close" class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
+    </div>
+  </div>
+
+  <!-- ============ WYGLĄD / MOTYW (modal) ============ -->
+  <div id="theme-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-4">Wygląd</h3>
+      <p class="text-sm text-slate-400 mb-2">Tryb</p>
+      <div class="flex flex-wrap gap-2 mb-5" id="theme-mode-buttons">
+        <button data-theme="dark" class="px-3 py-2 rounded-xl text-sm font-semibold bg-base border border-white/10 text-slate-300 hover:border-accent">Ciemny</button>
+        <button data-theme="highcontrast" class="px-3 py-2 rounded-xl text-sm font-semibold bg-base border border-white/10 text-slate-300 hover:border-accent">Wysoki kontrast</button>
+        <button data-theme="light" class="px-3 py-2 rounded-xl text-sm font-semibold bg-base border border-white/10 text-slate-300 hover:border-accent">Jasny</button>
+      </div>
+      <p class="text-sm text-slate-400 mb-2">Kolor akcentu</p>
+      <div class="flex gap-2 mb-5" id="theme-accent-buttons">
+        <button data-accent="sky" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#38bdf8"></button>
+        <button data-accent="violet" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#a78bfa"></button>
+        <button data-accent="emerald" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#34d399"></button>
+        <button data-accent="amber" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#fbbf24"></button>
+        <button data-accent="rose" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#fb7185"></button>
+      </div>
+      <button id="theme-close" class="w-full py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Gotowe</button>
+    </div>
+  </div>
+
+  <!-- ============ PORÓWNYWARKA (pływający pasek) ============ -->
+  <div id="compare-fab" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-panel border border-white/10 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3 flex-wrap justify-center wiggle">
+    <span class="text-xs text-slate-400 shrink-0">Porównanie (<span id="compare-count">0</span>/3):</span>
+    <span id="compare-items" class="flex flex-wrap gap-1.5 shrink-0"></span>
+    <button id="compare-open" class="shrink-0 px-3 py-1.5 rounded-lg bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm">Porównaj</button>
+    <button id="compare-clear" class="shrink-0 px-2 py-1.5 rounded-lg bg-base border border-white/10 text-slate-400 hover:text-red-300 text-sm">Wyczyść</button>
+  </div>
+
+  <!-- ============ PORÓWNYWARKA (overlay wynik) ============ -->
+  <div id="compare-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+    <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl">
+      <h3 class="text-lg font-bold text-white mb-4">Porównanie ofert</h3>
+      <div id="compare-result" class="overflow-x-auto"></div>
+      <button id="compare-close" class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
+    </div>
+  </div>
+
+  <!-- ============ LIGHTBOX (powiększenie zdjęcia) ============ -->
+  <div id="lightbox" class="hidden fixed inset-0 z-[70] bg-black/90 flex items-center justify-center p-4">
+    <button id="lightbox-close" class="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 text-white text-xl flex items-center justify-center hover:bg-white/20">&times;</button>
+    <button id="lightbox-prev" class="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-white text-xl flex items-center justify-center hover:bg-white/20">&larr;</button>
+    <button id="lightbox-next" class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-white text-xl flex items-center justify-center hover:bg-white/20">&rarr;</button>
+    <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-xl object-contain" />
+  </div>
 
 </body>
 </html>
