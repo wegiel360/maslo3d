@@ -9,12 +9,17 @@
   <link rel="icon" type="image/x-icon" href="favicon.ico" />
   <link rel="apple-touch-icon" href="logo-180.png" />
 
-  <!-- Preconnect do kluczowych źródeł (szybsze ładowanie SDK i CDN) -->
+<!-- Preconnect do kluczowych źródeł (szybsze ładowanie SDK i CDN) -->
   <link rel="preconnect" href="https://www.gstatic.com" />
   <link rel="preconnect" href="https://www.googleapis.com" />
   <link rel="preconnect" href="https://cdn.tailwindcss.com" />
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
   <link rel="preconnect" href="https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app" crossorigin />
+
+  <!-- Kleje animacji (Faza 7/8): anime.js + konfetti -->
+  <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@hiseb/confetti@2.2.0/dist/confetti.min.js"></script>
 
   <!-- ============================================================
        T A I L W I N D  (CDN Play) - klasy narzędziowe
@@ -59,6 +64,7 @@
       background-size: cover;
       background-position: center;
       background-repeat: no-repeat;
+      padding-bottom: calc(4.25rem + env(safe-area-inset-bottom));
     }
 
     /* Glassmorphism - delikatne, półprzezroczyste panele (frosted glass).
@@ -81,6 +87,62 @@
     header.backdrop-blur-xl {
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
+    }
+
+    /* Skeletony ładowania (Faza 6) */
+    .skeleton {
+      position: relative;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 0.75rem;
+    }
+    .skeleton::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+      animation: shimmer 1.4s infinite;
+    }
+    @keyframes shimmer {
+      100% { transform: translateX(100%); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .skeleton::after { animation: none; }
+    }
+
+    /* Dolny pasek nawigacji (Faza 5) — desktop + mobile */
+    #bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom));
+      background: rgba(11, 15, 26, 0.9);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid rgba(255, 255, 255, 0.10);
+    }
+    #bottom-nav .bn-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 0.35rem 0;
+      color: #94a3b8;
+      border-radius: 0.75rem;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+    }
+    #bottom-nav .bn-item.active {
+      color: var(--m-accent, #38bdf8);
     }
   </style>
 
@@ -615,12 +677,146 @@
     }
 
     /* --- Pełny link do strony / śledzenia --- */
+    // Podstawa (prefiks repozytorium GitHub Pages, np. /maslo3d/ — lub / na domenie)
+    function basePath() {
+      return window.location.pathname.replace(/\/[^\/]*$/, '/');
+    }
+    function homeUrl() { return basePath(); }
+    function adminUrl() { return basePath() + 'admin'; }
     function pageUrl() {
       return window.location.origin + window.location.pathname;
     }
     // Link śledzenia na podstawie 3-cyfrowego kodu zamówienia
     function trackingLink(orderCode) {
       return pageUrl() + '?o=' + orderCode;
+    }
+    // Nawigacja SPA bez przeładowania strony (pushState) — koszyk pozostaje w pamięci
+    function navigate(to) {
+      try { history.pushState({}, '', to); } catch (e) { window.location.href = to; }
+      route();
+      window.scrollTo(0, 0);
+    }
+
+    /* ==================================================================
+       FAZA 4–8: paginacja, dolny pasek, skeleton, animacje, konfetti
+       ================================================================== */
+    let adminOrderLimit = 25;
+
+    function accentHex() {
+      try {
+        var v = getComputedStyle(document.documentElement).getPropertyValue('--m-accent').trim();
+        if (v) return v;
+      } catch (e) {}
+      return '#38bdf8';
+    }
+    function prefersReducedMotion() {
+      return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    }
+
+    // --- Faza 6: skeleton ---
+    function skeletonCards(n) {
+      var tpl = document.getElementById('skeleton-card');
+      if (!tpl) return '';
+      var out = '';
+      for (var i = 0; i < n; i++) out += tpl.innerHTML;
+      return out;
+    }
+
+    // --- Faza 5: dolny pasek nawigacji (desktop + mobile) ---
+    function syncBottomNav() {
+      var nav = document.getElementById('bottom-nav');
+      if (!nav) return;
+      var params = new URLSearchParams(window.location.search);
+      var isAdmin = params.get('admin') === 'true' || /\/admin\/?$/.test(window.location.pathname);
+      var isCheckout = params.get('view') === 'checkout';
+      nav.classList.toggle('hidden', isAdmin || isCheckout);
+      var hasTracking = params.get('o') || params.get('orderId');
+      var active = hasTracking ? 'status' : 'shop';
+      nav.querySelectorAll('.bn-item').forEach(function (b) {
+        b.classList.toggle('active', b.dataset.nav === active);
+      });
+      updateBottomCartBadge();
+    }
+    function updateBottomCartBadge() {
+      var badge = document.getElementById('bn-cart-badge');
+      if (!badge) return;
+      var n = cartSummary().count;
+      badge.textContent = n > 0 ? n : '';
+      badge.classList.toggle('hidden', n === 0);
+    }
+    function initBottomNav() {
+      var nav = document.getElementById('bottom-nav');
+      if (!nav) return;
+      nav.querySelectorAll('[data-nav]').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var target = b.dataset.nav;
+          if (target === 'shop') navigate(homeUrl());
+          else if (target === 'cart') openCart();
+          else if (target === 'status') openTrackLookup();
+        });
+      });
+    }
+
+    // --- Faza 4: paginacja zamówień w adminie (Pokaż więcej) ---
+    function adminOrdersMore() {
+      adminOrderLimit += 25;
+      renderAdminOrders();
+    }
+
+    // --- Faza 7: animacja sukcesu zamówienia (anime.js + konfetti) ---
+    function celebrateSuccess() {
+      var reduce = prefersReducedMotion();
+      var accent = accentHex();
+      if (window.confetti) {
+        if (reduce) {
+          window.confetti({ count: 60, color: [accent] });
+        } else {
+          [
+            { x: window.innerWidth * 0.50, y: window.innerHeight * 0.55 },
+            { x: window.innerWidth * 0.25, y: window.innerHeight * 0.45 },
+            { x: window.innerWidth * 0.75, y: window.innerHeight * 0.45 }
+          ].forEach(function (pos, i) {
+            setTimeout(function () {
+              window.confetti({ position: pos, count: 90, size: 1, velocity: 220, color: [accent, '#8b5cf6', '#06b6d4'] });
+            }, i * 220);
+          });
+        }
+      }
+      if (reduce || typeof window.anime === 'undefined') return;
+      anime({
+        targets: '#view-checkout #checkout-body > *, #checkout-body > *, #cart-body > *, #cart-sidebar-body > *',
+        opacity: [0, 1],
+        translateY: [18, 0],
+        scale: [0.9, 1],
+        easing: 'easeOutBack',
+        duration: 600,
+        delay: anime.stagger(70)
+      });
+    }
+
+    // --- Faza 8: animacje przejść widoków i kart ---
+    function animateViewIn(el) {
+      if (!el || prefersReducedMotion() || typeof window.anime === 'undefined') return;
+      anime({
+        targets: el,
+        opacity: [0, 1],
+        translateY: [14, 0],
+        easing: 'easeInOutCubic',
+        duration: 320
+      });
+    }
+    function popInCards(container) {
+      if (!container || prefersReducedMotion() || typeof window.anime === 'undefined') return;
+      var cards = container.querySelectorAll('[data-goto-product]');
+      if (!cards.length) return;
+      anime({
+        targets: cards,
+        opacity: [0, 1],
+        scale: [0.96, 1],
+        easing: 'easeOutBack',
+        duration: 450,
+        delay: anime.stagger(40)
+      });
     }
 
     /* --- Generowanie 3-cyfrowego kodu zamówienia (001-999).
@@ -800,6 +996,7 @@
     // Dźwięki tylko na stronie głównej (brak ?o/?orderId/?p/?admin/&view=checkout)
     function isShopView() {
       var p = new URLSearchParams(window.location.search);
+      if (/\/admin\/?$/.test(window.location.pathname)) return false;
       return !p.get('o') && !p.get('orderId') && !p.get('p') && p.get('admin') !== 'true' && p.get('view') !== 'checkout';
     }
     function playClickSound() {
@@ -896,7 +1093,7 @@
       const code = params.get('o');
       const orderId = params.get('orderId');
       const productId = params.get('p');
-      const isAdmin = params.get('admin') === 'true';
+      const isAdmin = params.get('admin') === 'true' || /\/admin\/?$/.test(window.location.pathname);
       const view = params.get('view');
 
       // Wyczyść tracking listener przy zmianie widoku
@@ -935,6 +1132,11 @@
         document.getElementById('view-shop').classList.remove('hidden');
         renderShop();
       }
+
+      // Faza 5/8: dolny pasek + animacja wjazdu aktywnego widoku
+      syncBottomNav();
+      var visible = document.querySelector('[data-view]:not(.hidden)');
+      animateViewIn(visible);
     }
 
     // Ukrywa/pokazuje globalne elementy koszyka (brak koszyka w panelu admina i na checkout)
@@ -990,23 +1192,26 @@
        REALTIME LISTENERS
        ------------------------------------------------------------------ */
     var unsubSettings = null, unsubProducts = null, unsubOrders = null;
-    var renderPending = false;
+    var renderPending = false, renderTimer = null;
 
     function scheduleRender() {
-      if (renderPending) return;
-      renderPending = true;
-      requestAnimationFrame(function () {
-        renderPending = false;
-        renderShop();
-        if (isViewOpen('view-admin')) { renderAdminProducts(); renderAdminOrders(); renderPrintQueue(); renderBulkStock(); }
-        var params = new URLSearchParams(window.location.search);
-        var code = params.get('o');
-        var orderId = params.get('orderId');
-        var productId = params.get('p');
-        if (code) initTracking('o:' + code);
-        else if (orderId) initTracking('id:' + orderId);
-        else if (productId && isViewOpen('view-product')) renderProductDetail(productId);
-      });
+      // Faza 3: debounce ~60ms — zmiany zbiorcze (np. wiele dokumentów naraz) renderują się raz
+      if (renderTimer) return;
+      renderTimer = setTimeout(function () {
+        renderTimer = null;
+        renderAll();
+      }, 60);
+    }
+    function renderAll() {
+      renderShop();
+      if (isViewOpen('view-admin')) { renderAdminProducts(); renderAdminOrders(); renderPrintQueue(); renderBulkStock(); }
+      var params = new URLSearchParams(window.location.search);
+      var code = params.get('o');
+      var orderId = params.get('orderId');
+      var productId = params.get('p');
+      if (code) initTracking('o:' + code);
+      else if (orderId) initTracking('id:' + orderId);
+      else if (productId && isViewOpen('view-product')) renderProductDetail(productId);
     }
 
     function startListeners() {
@@ -1014,7 +1219,8 @@
       unsubSettings = db.collection('settings').doc('main').onSnapshot(function (snap) {
         settings = snap.exists ? snap.data() : settings;
         if (!firstDataLoaded && productsLoaded) firstDataLoaded = true;
-        scheduleRender();
+        // Faza 3: pomiń render lokalnych projekcji (serwer potwierdzi i rerenderuje raz)
+        if (!(snap.metadata && snap.metadata.hasPendingWrites)) scheduleRender();
       }, function (err) { console.error('Settings listener error:', err); });
 
       // Produkty — incrementalne aktualizacje
@@ -1029,7 +1235,7 @@
         });
         productsLoaded = true;
         if (!firstDataLoaded && settings !== undefined) firstDataLoaded = true;
-        scheduleRender();
+        if (!(snap.metadata && snap.metadata.hasPendingWrites)) scheduleRender();
       }, function (err) { console.error('Products listener error:', err); });
 
       // Zamówienia — incrementalne + filtr isDeleted (bez orderBy — sortowanie w JS)
@@ -1045,7 +1251,7 @@
             }
           });
           checkNewOrderAdmin(orders); // W5: powiadomienie (bez dźwięku)
-          scheduleRender();
+          if (!(snap.metadata && snap.metadata.hasPendingWrites)) scheduleRender();
         }, function (err) { console.error('Orders listener error:', err); });
     }
 
@@ -1078,6 +1284,13 @@
 
       // Lista produktów (z filtrami W3, życzeniami W6, porównaniem W7)
       const grid = document.getElementById('shop-grid');
+      // Faza 6: skeleton, dopóki nie ma produktów (unika pustki przy pierwszym pobraniu)
+      if (grid) grid.innerHTML = '';
+      if (grid && Object.keys(products).length === 0 && !firstDataLoaded) {
+        grid.innerHTML = skeletonCards(8);
+        renderPrinters();
+        return;
+      }
       let keys = Object.keys(products).filter(function (id) {
         const p = products[id];
         if (!p) return false;
@@ -1123,6 +1336,7 @@
 
       renderPrinters();
       observeShopImages();
+      popInCards(grid); // Faza 8: karty wjeżdżają kaskadowo
     }
 
     // HTML karty oferty w sklepie (z serduszkiem W6 i przyciskiem porównania W7)
@@ -1207,7 +1421,7 @@
           esc(pr.name) + (isActive ? ' · Drukowanie…' : ' · Wolna') +
           '</div>' +
           '<div data-printer-img="' + key + '" class="w-40 h-40 flex items-center justify-center">' +
-          '  <img class="max-h-full max-w-full object-contain drop-shadow-lg" alt="' + esc(pr.name) + '" />' +
+          '  <img class="max-h-full max-w-full object-contain drop-shadow-lg" alt="' + esc(pr.name) + '" loading="lazy" decoding="async" />' +
           '</div>' +
           '</div>';
       }).join('');
@@ -1288,7 +1502,7 @@
         '  <div id="pd-gallery-wrap" class="relative aspect-square w-full max-h-[70vh] rounded-2xl overflow-hidden bg-black/40 shadow-xl select-none" style="touch-action:pan-y">' +
         (galleryImages.length > 0
           ? galleryImages.map(function (gi, gidx) {
-            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain ' + (gidx === 0 ? '' : 'hidden') + '" />';
+            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain ' + (gidx === 0 ? '' : 'hidden') + '" loading="lazy" decoding="async" />';
           }).join('') +
           (galleryImages.length > 1
             ? '<button type="button" data-gall-prev class="gallery-arrow absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&larr;</button>' +
@@ -1421,7 +1635,7 @@
       var img = imageSrcFor(p.imageUrl || p.image);
       if (img && img.length > 20) {
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
-          '  <img data-src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" />' +
+          '  <img data-src="' + esc(img) + '" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" decoding="async" />' +
           '</div>';
       }
       return '<div class="aspect-square w-full flex items-center justify-center bg-gradient-to-br from-panel to-base text-slate-600">' +
@@ -1588,6 +1802,7 @@
       badge.classList.toggle('hidden', s.count === 0);
       var sb = document.getElementById('cart-sidebar-badge');
       if (sb) sb.textContent = s.count + ' szt.';
+      updateBottomCartBadge(); // Faza 5
     }
 
     function renderCheckoutFooter(container, label, action) {
@@ -1815,6 +2030,7 @@
           lastOrderData = { orderId: orderId, orderCode: orderCode, name: displayName, estPrintSec: estPrintSec };
           cartStep = 5;
           if (onCheckout) renderCheckoutView(); else renderCartStep();
+          celebrateSuccess(); // Faza 7: konfetti + animacja sukcesu
         })
         .catch(function (err) {
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
@@ -1855,8 +2071,8 @@
         return;
       }
       closeTrackLookup();
-      // Przekierowanie na ekran śledzenia (?o=KOD)
-      window.location.search = '?o=' + code;
+      // Przekierowanie na ekran śledzenia (?o=KOD) — SPA bez przeładowania
+      navigate('?o=' + code);
     }
 
     /* ==================================================================
@@ -2525,7 +2741,18 @@
       if (active.length === 0) {
         tbody.innerHTML += '<tr><td colspan="10" class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</td></tr>';
       } else {
-        active.forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
+        // Faza 4: paginacja — renderuj tylko widoczne okno (Pokaż więcej)
+        active.slice(0, adminOrderLimit).forEach(function (item) { tbody.appendChild(orderRow(item.id, item.o, false)); });
+        if (active.length > adminOrderLimit) {
+          var more = document.createElement('tr');
+          more.innerHTML =
+            '<td colspan="10" class="py-4 text-center">' +
+            '<button id="admin-orders-more" type="button" class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-slate-300 hover:border-accent hover:text-accent transition-all">' +
+            'Pokaż więcej (' + (active.length - adminOrderLimit) + ' pozostało)</button></td>';
+          tbody.appendChild(more);
+          var b = more.querySelector('#admin-orders-more');
+          if (b) b.addEventListener('click', adminOrdersMore);
+        }
       }
 
       if (archived.length > 0) {
@@ -2829,7 +3056,7 @@
     // Wylogowanie z panelu
     function adminLogout() {
       try { sessionStorage.removeItem(ADMIN_AUTH_KEY); } catch (e) { /* ignoruj */ }
-      window.location.search = '';
+      navigate(homeUrl());
     }
 
     /* ------------------------------------------------------------------
@@ -2837,6 +3064,11 @@
        ------------------------------------------------------------------ */
     /* --- Event delegation (jednorazowa instalacja) --- */
     function setupEventDelegation() {
+      // Panel admina: ukryte przejście przez czystą ścieżkę /admin (SPA, bez przeładowania)
+      document.addEventListener('click', function (e) {
+        var al = e.target.closest('[data-admin-link]');
+        if (al) { e.preventDefault(); navigate(adminUrl()); }
+      });
       // Sklep: koszyk, gwizdek, pobieranie pliku, życzenia, porównanie
       var grid = document.getElementById('shop-grid');
       if (grid) grid.addEventListener('click', function (e) {
@@ -2869,7 +3101,7 @@
         }
         btn = e.target.closest('[data-goto-product]');
         if (btn) {
-          window.location.search = '?p=' + encodeURIComponent(btn.dataset.gotoProduct);
+          navigate('?p=' + encodeURIComponent(btn.dataset.gotoProduct));
           return;
         }
         btn = e.target.closest('[data-whistle]');
@@ -3020,6 +3252,7 @@
       updateWishBadge();
       startListeners();
       setupEventDelegation();
+      initBottomNav(); // Faza 5: dolny pasek
       route();
       renderCartStep(); // wypełnij sidebar (desktop) na start
       renderShopTagFilters();
@@ -3063,7 +3296,7 @@
       document.getElementById('wish-modal').addEventListener('click', function (e) {
         if (e.target === this) { this.classList.add('hidden'); return; }
         var ob = e.target.closest('[data-wish-open]');
-        if (ob) { this.classList.add('hidden'); window.location.search = '?p=' + encodeURIComponent(ob.dataset.wishOpen); return; }
+        if (ob) { this.classList.add('hidden'); navigate('?p=' + encodeURIComponent(ob.dataset.wishOpen)); return; }
         var rm = e.target.closest('[data-wish-rm]');
         if (rm) { toggleWish(rm.dataset.wishRm); renderWishList(); renderShop(); }
       });
@@ -3173,7 +3406,7 @@
         </button>
         <button id="theme-open" title="Wygląd i kolory"
           class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Wygląd</button>
-        <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
+        <a href="#" data-admin-link class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
       </div>
     </header>
 
@@ -4123,7 +4356,7 @@
     <div class="max-w-2xl mx-auto px-4 py-6">
       <div class="flex items-center justify-between mb-4">
         <button id="checkout-back" class="text-sm text-slate-400 hover:text-accent transition-colors">&larr; Wróć do koszyka</button>
-        <a href="?admin=true" class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
+        <a href="#" data-admin-link class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
       </div>
       <div class="bg-panel border border-white/10 rounded-2xl p-5">
         <div id="checkout-header"></div>
@@ -4191,6 +4424,40 @@
     <button id="lightbox-next" class="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 text-white text-xl flex items-center justify-center hover:bg-white/20">&rarr;</button>
     <img id="lightbox-img" src="" alt="" class="max-w-full max-h-full rounded-xl object-contain" />
   </div>
+
+  <!-- ============ DOLNY PASEK NAWIGACJI (Faza 5) ============ -->
+  <nav id="bottom-nav" aria-label="Nawigacja">
+    <button type="button" class="bn-item" data-nav="shop" title="Sklep">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 10.5L12 3l9 7.5M5 9.5V21h5.5v-6h3v6H19V9.5" />
+      </svg>
+      <span>Sklep</span>
+    </button>
+    <button type="button" class="bn-item" data-nav="cart" title="Koszyk">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" />
+      </svg>
+      <span>Koszyk <span id="bn-cart-badge" class="hidden min-w-4 h-4 px-0.5 ml-1 inline-flex items-center justify-center rounded-full bg-accent text-slate-900 text-[10px] font-bold"></span></span>
+    </button>
+    <button type="button" class="bn-item" data-nav="status" title="Status">
+      <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5l-9-5.25L3 7.5m18 0l-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
+      </svg>
+      <span>Status</span>
+    </button>
+  </nav>
+
+  <!-- ============ SKELETON (wzorzec) ============ -->
+  <template id="skeleton-card">
+    <div class="bg-panel border border-white/5 rounded-2xl overflow-hidden flex flex-col">
+      <div class="skeleton aspect-square"></div>
+      <div class="p-4 space-y-2">
+        <div class="skeleton h-5 w-2/3"></div>
+        <div class="skeleton h-4 w-1/2"></div>
+        <div class="skeleton h-9 w-full"></div>
+      </div>
+    </div>
+  </template>
 
 </body>
 </html>
