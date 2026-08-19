@@ -151,26 +151,6 @@
       border-radius: 1rem;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
     }
-    /* Mobilny drawer — bottom-sheet */
-    #cart-drawer {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      top: auto;
-      height: 92dvh;
-      height: 92vh;
-      z-index: 70;
-      background: #121826;
-      border-top-left-radius: 1.25rem;
-      border-top-right-radius: 1.25rem;
-      border: 1px solid rgba(255, 255, 255, 0.10);
-      box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.5);
-      padding-bottom: env(safe-area-inset-bottom);
-      display: flex;
-      flex-direction: column;
-      transition: transform .3s ease-in-out;
-    }
   </style>
 
   <!-- Motywy: kolor akcentu + tryb (ciemny / wysoki kontrast / jasny).
@@ -269,7 +249,7 @@
 
   <!-- ============ JEDNOLITY GÓRNY PASEK NAWIGACJI ============ -->
   <nav id="app-nav" aria-label="Nawigacja główna">
-    <div class="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2">
+    <div class="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
       <a href="?" data-nav="shop" class="nav-item" title="Sklep">
         <img src="logo-64.png" alt="Logo Masło3D" class="w-9 h-9 rounded-lg object-cover" />
         <span class="hidden sm:inline font-bold text-white text-base">Masło3D</span>
@@ -287,10 +267,23 @@
         <button type="button" class="nav-item" data-nav="cart" title="Koszyk">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 3h1.386c.51 0 .955.343 1.087.835l.383 1.437M7.5 14.25a3 3 0 00-3 3h15.75m-12.75-3h11.218c1.121-2.3 2.1-4.684 2.924-7.138a60.114 60.114 0 00-16.536-1.84M7.5 14.25L5.106 5.272M6 20.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm12.75 0a.75.75 0 11-1.5 0 .75.75 0 011.5 0z" /></svg>
           <span id="app-nav-cart-count" class="hidden min-w-5 h-5 px-1 -ml-1 rounded-full bg-accent text-slate-900 text-xs font-bold items-center justify-center"></span>
+          <span class="hidden md:inline">Koszyk</span>
         </button>
         <div id="cart-preview" class="hidden"></div>
       </div>
-      <button type="button" class="nav-item admin-only" data-nav="admin" title="Panel" style="display:none">Panel</button>
+      <button type="button" id="theme-open" class="nav-item" title="Wygląd i kolory">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128m0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" /></svg>
+        <span class="hidden md:inline">Wygląd</span>
+      </button>
+      <button type="button" class="nav-item" data-nav="admin" title="Panel">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
+        <span class="hidden md:inline">Panel</span>
+      </button>
+      <span id="admin-new-order" class="admin-only hidden text-xs px-2.5 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/40 text-emerald-300 font-semibold" style="display:none">● Nowe zamówienie</span>
+      <button type="button" id="admin-logout" class="admin-only nav-item" title="Wyloguj" style="display:none">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l2.5 2.5L17 9M4.5 11.5h9" /></svg>
+        <span class="hidden md:inline">Wyloguj</span>
+      </button>
     </div>
   </nav>
 
@@ -603,31 +596,8 @@
     let checkoutDeliveryDetail = '';
 
     // --- Preferencje użytkownika (localStorage) ---
-    const WISH_KEY = 'maslo3d_wishlist';
     const THEME_KEY = 'maslo3d_theme';
     const ACCENT_KEY = 'maslo3d_accent';
-    // Lista życzeń (id produktów)
-    let wishlist = new Set();
-    function loadWishlist() {
-      try {
-        var arr = JSON.parse(localStorage.getItem(WISH_KEY) || '[]');
-        if (Array.isArray(arr)) wishlist = new Set(arr);
-      } catch (e) { wishlist = new Set(); }
-    }
-    function saveWishlist() {
-      try { localStorage.setItem(WISH_KEY, JSON.stringify(Array.from(wishlist))); } catch (e) {}
-      updateWishBadge();
-    }
-    function toggleWish(id) {
-      if (wishlist.has(id)) wishlist.delete(id); else wishlist.add(id);
-      saveWishlist();
-    }
-    function updateWishBadge() {
-      var b = document.getElementById('wish-badge');
-      if (b) { b.textContent = wishlist.size; b.classList.toggle('hidden', wishlist.size === 0); }
-      var g = document.getElementById('wish-count');
-      if (g) g.textContent = wishlist.size;
-    }
     // Lista porównania (max 3 produkty)
     const COMPARE_MAX = 3;
     let compareIds = [];
@@ -659,7 +629,6 @@
     let shopQuery = '';
     let shopTags = [];   // wybrane tagi (checkboxy)
     let shopSort = 'name'; // name | time | weight | stock
-    let shopWishOnly = false;
     // Motyw: zawsze ciemny (W12); użytkownik wybiera tylko kolor akcentu.
     let currentTheme = 'dark';
     let currentAccent = 'sky';
@@ -837,7 +806,7 @@
       }
       if (reduce || typeof window.anime === 'undefined') return;
       anime({
-        targets: '#ck-body > *, #cart-body > *, #view-shop > *, #view-koszyk > *',
+        targets: '#ck-body > *, #view-shop > *, #view-koszyk > *',
         opacity: [0, 1],
         translateY: [18, 0],
         scale: [0.9, 1],
@@ -1318,7 +1287,6 @@
         const p = products[id];
         if (!p) return false;
         if (p.draft) return false; // W10: draft ukryty w sklepie
-        if (shopWishOnly && !wishlist.has(id)) return false;
         const q = shopQuery.trim().toLowerCase();
         if (q) {
           const hay = (p.name || '').toLowerCase() + ' ' + ((p.tags || []).join(' ').toLowerCase());
@@ -1337,7 +1305,7 @@
         grid.innerHTML =
           '<div class="col-span-full text-center py-16 text-slate-400">' +
           '  <p class="text-lg">Brak ofert w sklepie.</p>' +
-          '  <p class="text-sm mt-1">' + ((shopQuery || shopTags.length || shopWishOnly) ? 'Zmień filtry, aby zobaczyć więcej.' : 'Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.') + '</p>' +
+          '  <p class="text-sm mt-1">' + ((shopQuery || shopTags.length) ? 'Zmień filtry, aby zobaczyć więcej.' : 'Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.') + '</p>' +
           '</div>';
         return;
       }
@@ -1369,7 +1337,6 @@
         'bg-panel border border-white/5 rounded-2xl overflow-hidden shadow-xl ' +
         'hover:border-accent/40 hover:shadow-accent/10 transition-all flex flex-col cursor-pointer';
       card.setAttribute('data-goto-product', id);
-      const wished = wishlist.has(id) ? 'text-red-400 border-red-400/50' : 'text-slate-300 hover:text-red-300';
       const inCmp = compareIds.indexOf(id) !== -1;
       const cmpCls = inCmp ? 'bg-accent text-slate-900 border-accent' : 'text-slate-300 border-white/20 hover:border-accent';
       const tagChips = (p.tags || []).map(function (t) {
@@ -1378,9 +1345,6 @@
       card.innerHTML =
         '<div class="relative">' +
           productImageHtml(p) +
-          '<button type="button" data-wish="' + id + '" title="Obserwuj" class="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 flex items-center justify-center transition ' + wished + '">' +
-            '<svg class="w-4 h-4" fill="' + (wishlist.has(id) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>' +
-          '</button>' +
           '<button type="button" data-compare="' + id + '" title="Dodaj do porównania" class="absolute top-2 left-2 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm border flex items-center justify-center text-sm font-bold transition ' + cmpCls + '">' + (inCmp ? '&#10003;' : '&#10761;') + '</button>' +
         '</div>' +
         '<div class="p-4 flex flex-col gap-2 flex-1">' +
@@ -1537,9 +1501,6 @@
         '  <div class="flex flex-col">' +
         '    <div class="flex items-center justify-between gap-3">' +
         '    <h1 class="text-2xl font-bold text-white">' + esc(p.name) + '</h1>' +
-        '    <button id="pd-wish" data-pd-wish="' + productId + '" title="Obserwuj" class="shrink-0 w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center transition ' + (wishlist.has(productId) ? 'text-red-400 border-red-400/50' : 'text-slate-300 hover:text-red-300') + '">' +
-        '      <svg class="w-5 h-5" fill="' + (wishlist.has(productId) ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>' +
-        '    </button>' +
         '  </div>' +
         (p.desc ? '    <p class="text-slate-400 mt-4 leading-relaxed">' + esc(p.desc) + '</p>' : '') +
         '    <div class="mt-4 flex flex-wrap gap-2">' +
@@ -1573,10 +1534,6 @@
           }
         });
       }
-
-      // W6: serce obserwowania na podstronie produktu
-      var pdWish = document.getElementById('pd-wish');
-      if (pdWish) pdWish.addEventListener('click', function () { toggleWish(productId); renderProductDetail(productId); });
 
       // W4: Lightbox — klik na zdjęcie galerii otwiera powiększenie
       var gallWrap = document.getElementById('pd-gallery-wrap');
@@ -1696,20 +1653,12 @@
       imgs.forEach(function (img) { shopImgObserver.observe(img); });
     }
 
-    /* --- Koszyk: /koszyk + mobilny drawer (bottom-sheet) + hover-podgląd --- */
+    /* --- Koszyk: /koszyk + hover-podgląd przy ikonie --- */
     function openCart() {
-      // Mobile: otwiera drawer; desktop: przechodzi na /koszyk
-      if (window.innerWidth < 768) {
-        cartStep = 1;
-        renderCartStep();
-        document.getElementById('cart-drawer').classList.remove('hidden');
-      } else {
-        goCheckout();
-      }
+      // Klik w koszyk zawsze prowadzi bezpośrednio na stronę /koszyk
+      goCheckout();
     }
-    function closeCart() {
-      if (document.getElementById('cart-drawer')) document.getElementById('cart-drawer').classList.add('hidden');
-    }
+    function closeCart() {}
     // Hover-podgląd koszyka przy ikonie (desktop)
     function renderCartPreview() {
       var prev = document.getElementById('cart-preview');
@@ -1832,12 +1781,6 @@
         document.getElementById('ck-header'),
         document.getElementById('ck-body'),
         document.getElementById('ck-footer')
-      );
-      // Mobilny drawer (bottom-sheet)
-      renderCartInto(
-        document.getElementById('cart-header'),
-        document.getElementById('cart-body'),
-        document.getElementById('cart-footer')
       );
     }
 
@@ -2017,14 +1960,11 @@
       var name = checkoutName.trim();
       var initial = checkoutInitial.trim().toUpperCase();
       var deliveryDetail = checkoutDeliveryDetail.trim();
-      // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni (drawer/sidebar/checkout)
+      // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni
       var onCheckout = new URLSearchParams(window.location.search).get('view') === 'koszyk' || /\/koszyk\/?$/.test(window.location.pathname);
       var activeContainers = document.getElementById('ck-body')
         ? document.getElementById('ck-body')
-        : (document.getElementById('cart-drawer') &&
-           document.getElementById('cart-drawer').classList.contains('hidden')
-          ? document.getElementById('ck-body')
-          : document.getElementById('cart-body'));
+        : document.getElementById('ck-body');
       var msg = activeContainers ? activeContainers.querySelector('#checkout-message') : null;
 
       if (!msg) msg = { innerHTML: '' }; // fallback, by nie psować dalszej logiki
@@ -2119,16 +2059,6 @@
           msg.innerHTML = '<p class="text-red-300 text-sm">Błąd zapisu: ' + esc(err.message) + '</p>';
           submitBtns.forEach(function (b) { b.disabled = false; });
         });
-    }
-
-    /* --- Modal udostępniania (QR strony) --- */
-    function openShareModal() {
-      renderQR('share-qr', pageUrl());
-      document.getElementById('share-url').value = pageUrl();
-      document.getElementById('share-modal').classList.remove('hidden');
-    }
-    function closeShareModal() {
-      document.getElementById('share-modal').classList.add('hidden');
     }
 
     /* --- Modal "Śledź paczkę" (wpisz numer zamówienia) --- */
@@ -2954,33 +2884,6 @@
     }
 
     /* --- W6: modal listy życzeń --- */
-    function renderWishList() {
-      const list = document.getElementById('wish-list');
-      const ids = Array.from(wishlist).filter(function (id) { return products[id]; });
-      document.getElementById('wish-count').textContent = ids.length;
-      if (ids.length === 0) {
-        list.innerHTML = '<p class="text-slate-500 text-sm py-4 text-center">Brak obserwowanych ofert.</p>';
-        return;
-      }
-      list.innerHTML = ids.map(function (id) {
-        const p = products[id];
-        return '<div class="flex items-center gap-3 bg-base/60 border border-white/10 rounded-xl p-3">' +
-          '<div class="w-12 h-12 rounded-lg overflow-hidden bg-black/40 shrink-0">' +
-          ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20
-            ? '<img data-src="' + esc(imageSrcFor(p.imageUrl || p.image)) + '" alt="" class="w-full h-full object-cover" loading="lazy" />'
-            : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">—</div>') +
-          '</div>' +
-          '<div class="flex-1 min-w-0">' +
-          '  <p class="font-medium text-white text-sm truncate">' + esc(p.name) + '</p>' +
-          '  <p class="text-xs text-slate-500">' + fmtTime(p.printTimeSec) + (p.weight ? ' · ' + fmtGrams(p.weight) : '') + '</p>' +
-          '</div>' +
-          '<button data-wish-open="' + id + '" class="text-xs text-accent hover:text-sky-300 shrink-0">Otwórz</button>' +
-          '<button data-wish-rm="' + id + '" class="text-xs text-red-400 hover:text-red-300 shrink-0">Usuń</button>' +
-          '</div>';
-      }).join('');
-      hydrateImages(list);
-    }
-
     /* --- W7: overlay porównywarki --- */
     function renderCompareResult() {
       const box = document.getElementById('compare-result');
@@ -3152,19 +3055,10 @@
         var al = e.target.closest('[data-admin-link]');
         if (al) { e.preventDefault(); navigate(adminUrl()); }
       });
-      // Sklep: koszyk, gwizdek, pobieranie pliku, życzenia, porównanie
+      // Sklep: koszyk, gwizdek, pobieranie pliku, porównanie
       var grid = document.getElementById('shop-grid');
       if (grid) grid.addEventListener('click', function (e) {
         var btn;
-        btn = e.target.closest('[data-wish]');
-        if (btn) {
-          e.stopPropagation();
-          var wid = btn.dataset.wish;
-          toggleWish(wid);
-          renderShop();
-          flash(wishlist.has(wid) ? 'Dodano do ulubionych' : 'Usunięto z ulubionych');
-          return;
-        }
         btn = e.target.closest('[data-compare]');
         if (btn) {
           e.stopPropagation();
@@ -3213,7 +3107,7 @@
       });
 
       // Koszyk: inkrementacja, dekrementacja, usuwanie (drawer + sidebar)
-      var cartBodies = document.querySelectorAll('#ck-body, #cart-body');
+      var cartBodies = document.querySelectorAll('#ck-body');
       cartBodies.forEach(function (cartBody) {
       cartBody.addEventListener('click', function (e) {
         var btn;
@@ -3324,16 +3218,14 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-      loadWishlist();
       loadThemePrefs();
       loadCart();
       updateCartBadge();
-      updateWishBadge();
       startListeners();
       setupEventDelegation();
       initAppNav(); // Jednolity górny pasek
       route();
-      renderCartStep(); // wypełnij widok /koszyk i drawer na start
+      renderCartStep(); // wypełnij widok /koszyk na start
       initCartControl(); // kontrolka koszyka z hover-podglądem
       updateCartCount();
       renderShopTagFilters();
@@ -3341,9 +3233,6 @@
       loadAssets().then(function () { renderPrinters(); }).catch(function (e) { console.error('assets:', e); });
 
       // Sklep
-      document.getElementById('share-open').addEventListener('click', openShareModal);
-      document.getElementById('share-close').addEventListener('click', closeShareModal);
-      document.getElementById('track-lookup-open').addEventListener('click', openTrackLookup);
       document.getElementById('track-lookup-close').addEventListener('click', closeTrackLookup);
       document.getElementById('track-lookup-form').addEventListener('submit', handleTrackLookup);
 
@@ -3360,25 +3249,12 @@
       }
       var shopSortEl = document.getElementById('shop-sort');
       if (shopSortEl) { shopSortEl.value = shopSort; shopSortEl.addEventListener('change', function () { shopSort = this.value; renderShop(); }); }
-      var shopWishOnlyCb = document.getElementById('shop-wish-only');
-      if (shopWishOnlyCb) { shopWishOnlyCb.checked = shopWishOnly; shopWishOnlyCb.addEventListener('change', function () { shopWishOnly = this.checked; renderShop(); }); }
       var tagFilters = document.getElementById('shop-tag-filters');
       if (tagFilters) tagFilters.addEventListener('change', function (e) {
         if (e.target.classList.contains('shop-tag-cb')) {
           shopTags = Array.prototype.slice.call(tagFilters.querySelectorAll('.shop-tag-cb')).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
           renderShop();
         }
-      });
-
-      // W6: lista życzeń
-      document.getElementById('wish-open').addEventListener('click', function () { renderWishList(); document.getElementById('wish-modal').classList.remove('hidden'); });
-      document.getElementById('wish-close').addEventListener('click', function () { document.getElementById('wish-modal').classList.add('hidden'); });
-      document.getElementById('wish-modal').addEventListener('click', function (e) {
-        if (e.target === this) { this.classList.add('hidden'); return; }
-        var ob = e.target.closest('[data-wish-open]');
-        if (ob) { this.classList.add('hidden'); navigate('?p=' + encodeURIComponent(ob.dataset.wishOpen)); return; }
-        var rm = e.target.closest('[data-wish-rm]');
-        if (rm) { toggleWish(rm.dataset.wishRm); renderWishList(); renderShop(); }
       });
 
       // W12: motyw + akcent (tylko tryb ciemny)
@@ -3434,14 +3310,8 @@
       if (bulkSave) bulkSave.addEventListener('click', saveBulkStock);
 
       // Zamykanie modali po kliknięciu w tło
-      document.getElementById('cart-drawer').addEventListener('click', function (e) { if (e.target === this) closeCart(); });
-      document.getElementById('share-modal').addEventListener('click', function (e) { if (e.target === this) closeShareModal(); });
       document.getElementById('track-lookup-modal').addEventListener('click', function (e) { if (e.target === this) closeTrackLookup(); });
       document.getElementById('cancel-modal').addEventListener('click', function (e) { if (e.target === this) closeCancelModal(); });
-
-      // Koszyk z podstrony produktu
-      var pdCartBtn = document.getElementById('pd-open-cart');
-      if (pdCartBtn) pdCartBtn.addEventListener('click', openCart);
     });
 
     window.addEventListener('popstate', route);
@@ -3458,25 +3328,6 @@
 
   <!-- ================= WIDOK 1: SKLEP ================= -->
   <div id="view-shop" data-view class="hidden">
-    <!-- NAGŁÓWEK -->
-    <header class="sticky top-14 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
-      <div class="max-w-6xl mx-auto px-4 py-2 flex items-center gap-2 flex-wrap">
-        <button id="share-open" title="Udostępnij stronę (kod QR)"
-          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">QR</button>
-        <button id="track-lookup-open" title="Śledź zamówienie po numerze"
-          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Śledź paczkę</button>
-        <button id="wish-open" title="Twoje obserwowane"
-          class="relative text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">
-          <svg class="w-4 h-4 inline-block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="vertical-align:-3px"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
-          Ulubione
-          <span id="wish-badge" class="hidden min-w-5 h-5 px-1 ml-1 rounded-full bg-accent text-slate-900 text-xs font-bold items-center justify-center"></span>
-        </button>
-        <button id="theme-open" title="Wygląd i kolory"
-          class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Wygląd</button>
-        <a href="#" data-admin-link class="text-xs text-slate-500 hover:text-accent transition-colors">Panel</a>
-      </div>
-    </header>
-
     <!-- BANER TRYBU -->
     <div class="max-w-6xl mx-auto px-4 pt-4">
       <div id="shop-banner"
@@ -3517,12 +3368,6 @@
                 <option value="stock">Stan magazynowy</option>
               </select>
             </div>
-            <div>
-              <label class="inline-flex items-center gap-2 h-full px-3 py-2.5 rounded-xl bg-base border border-white/10 text-sm text-slate-300 cursor-pointer">
-                <input id="shop-wish-only" type="checkbox" class="accent-accent" />
-                <span>Obserwowane</span>
-              </label>
-            </div>
           </div>
           <div class="mt-3">
             <p class="text-xs text-slate-500 mb-2">Filtruj po tagach:</p>
@@ -3537,23 +3382,6 @@
     <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
       <p>Masło3D - projekt szkolny</p>
     </footer>
-
-    <!-- MODAL: UDOSTĘPNIJ (QR) -->
-    <div id="share-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl text-center">
-        <h3 class="text-lg font-bold text-white mb-1">Udostępnij stronę</h3>
-        <p class="text-sm text-slate-400 mb-4">Zeskanuj kod QR, aby otworzyć sklep na telefonie.</p>
-        <div class="flex justify-center bg-white rounded-xl p-3 mb-4"><div id="share-qr"></div></div>
-        <div class="flex items-center gap-2">
-          <input id="share-url" type="text" readonly
-            class="flex-1 bg-base border border-white/10 rounded-lg px-3 py-2 text-sm text-accent" onfocus="this.select()" />
-          <button onclick="copyText(document.getElementById('share-url').value).then(function(){flash('Skopiowano adres');})"
-            class="shrink-0 bg-accent hover:bg-sky-400 text-slate-900 font-semibold px-3 py-2 rounded-lg text-sm">Kopiuj</button>
-        </div>
-        <button id="share-close"
-          class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
-      </div>
-    </div>
 
     <!-- MODAL: ŚLEDŹ PACZKĘ (wpisz 3-cyfrowy numer zamówienia) -->
     <div id="track-lookup-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -3584,12 +3412,6 @@
   <!-- ================= WIDOK 2: ŚLEDZENIE ================= -->
   <div id="view-tracking" data-view class="hidden">
     <div class="min-h-screen flex flex-col">
-      <header class="border-b border-white/5">
-        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <a href="?" class="text-accent hover:text-sky-300 text-sm font-semibold">&larr; Sklep</a>
-          <h1 class="font-bold text-white">Status zamówienia</h1>
-        </div>
-      </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
         <div id="tracking-box" class="w-full"></div>
       </main>
@@ -3600,12 +3422,6 @@
   <!-- ================= WIDOK: PODSTRONA PRODUKTU ================= -->
   <div id="view-product" data-view class="hidden">
     <div class="min-h-screen flex flex-col">
-      <header class="sticky top-14 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
-        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <a href="?" class="text-accent hover:text-sky-300 text-sm font-semibold">&larr; Sklep</a>
-          <button id="pd-open-cart" class="ml-auto text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-accent hover:text-accent transition-colors">Koszyk</button>
-        </div>
-      </header>
       <main class="flex-1 px-4 py-8">
         <div id="product-detail-box" class="max-w-5xl mx-auto"></div>
       </main>
@@ -3616,11 +3432,6 @@
   <!-- ================= WIDOK: LOGOWANIE DO PANELU ================= -->
   <div id="view-admin-login" data-view class="hidden">
     <div class="min-h-screen flex flex-col">
-      <header class="border-b border-white/5">
-        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center gap-3">
-          <h1 class="font-bold text-white">Panel administratora</h1>
-        </div>
-      </header>
       <main class="flex-1 flex items-center justify-center px-4 py-10">
         <div class="w-full max-w-sm">
           <div class="bg-panel border border-white/10 rounded-2xl p-6 shadow-2xl">
@@ -3660,19 +3471,6 @@
 
   <!-- ================= WIDOK 3: PANEL ADMINA ================= -->
   <div id="view-admin" data-view class="hidden">
-    <header class="sticky top-14 z-30 backdrop-blur-xl bg-base/80 border-b border-white/5">
-      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
-        <img src="logo-64.png" alt="Logo Masło3D" class="w-10 h-10 rounded-lg object-cover" />
-        <div class="flex-1">
-          <h1 class="text-lg font-bold text-white leading-tight">Panel Administratora</h1>
-          <p class="text-xs text-slate-400">System zarządzania produkcją i zamówieniami</p>
-        </div>
-        <button id="admin-logout" class="text-xs px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:border-red-400/40 hover:text-red-300 transition-colors">Wyloguj</button>
-        <span id="admin-new-order" class="hidden text-xs px-2.5 py-1.5 rounded-full bg-emerald-400/10 border border-emerald-400/40 text-emerald-300 font-semibold">● Nowe zamówienie</span>
-        <a href="." class="text-xs text-slate-500 hover:text-accent transition-colors">Widok sklepu</a>
-      </div>
-    </header>
-
     <main class="max-w-7xl mx-auto px-4 py-8">
 
       <!-- USTAWIENIA (tryb, baner) -->
@@ -4382,16 +4180,6 @@
     window.__getModelColor = function () { return modelColor; };
   </script>
 
-  <!-- ================== KOSZYK: MOBILNY DRAWER (bottom-sheet) ================== -->
-  <div id="cart-drawer" class="hidden">
-    <div class="mx-3 mb-2 pt-2 flex justify-center shrink-0">
-      <span class="w-10 h-1.5 rounded-full bg-white/20" aria-hidden="true"></span>
-    </div>
-    <div id="cart-header" class="px-4 border-b border-white/10 shrink-0"></div>
-    <div id="cart-body" class="flex-1 overflow-y-auto px-4 py-3"></div>
-    <div id="cart-footer" class="border-t border-white/10 p-4 space-y-2 shrink-0"></div>
-  </div>
-
   <!-- ============ WIDOK KOSZYKA (osobna strona /koszyk, kroki 1-4) ============ -->
   <div id="view-koszyk" data-view class="hidden min-h-screen bg-base">
     <div class="max-w-2xl mx-auto px-4 py-6">
@@ -4401,19 +4189,6 @@
         <div id="ck-body"></div>
         <div id="ck-footer" class="mt-4"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- ============ WIDOK CHECKOUT (osobna strona, kroki 2-4) ============ -->
-  <!-- ============ LISTA ŻYCZEŃ (modal) ============ -->
-  <div id="wish-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-    <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-white mb-4">Obserwowane oferty</h3>
-      <div id="wish-count-label" class="text-sm text-slate-400 mb-3">
-        <span id="wish-count">0</span> produktów
-      </div>
-      <div id="wish-list" class="space-y-2 max-h-80 overflow-y-auto"></div>
-      <button id="wish-close" class="mt-4 w-full py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Zamknij</button>
     </div>
   </div>
 
