@@ -144,12 +144,30 @@
     #cart-preview {
       position: absolute;
       right: 0;
-      top: calc(100% + 8px);
-      width: 264px;
-      background: #121826;
-      border: 1px solid rgba(255, 255, 255, 0.10);
-      border-radius: 1rem;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      top: calc(100% + 10px);
+      width: 300px;
+      background: #141a28;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 1.1rem;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      overflow: hidden;
+      animation: previewIn .18s ease-in-out;
+    }
+    #cart-preview::before {
+      content: "";
+      position: absolute;
+      top: -6px;
+      right: 18px;
+      width: 12px;
+      height: 12px;
+      background: #141a28;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      border-left: 1px solid rgba(255, 255, 255, 0.12);
+      transform: rotate(45deg);
+    }
+    @keyframes previewIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 
@@ -157,7 +175,7 @@
        Nadbija statyczny kolor akcentu Tailwinda zmiennymi CSS (W12). -->
   <style>
     html {
-      --m-accent: #38bdf8;       /* domyślny: skyla */
+      --m-accent: #009473;       /* wiodący kolor strony */
       --m-base: #0b0f1a;
       --m-panel-solid: #121826;
       --m-text: #cbd5e1;
@@ -167,10 +185,6 @@
       --m-border: rgba(255, 255, 255, 0.10);
       --m-border-strong: rgba(255, 255, 255, 0.35);
     }
-    html.accent-violet   { --m-accent: #a78bfa; }
-    html.accent-emerald  { --m-accent: #34d399; }
-    html.accent-amber    { --m-accent: #fbbf24; }
-    html.accent-rose     { --m-accent: #fb7185; }
     /* Tryb jasny */
     html.light {
       --m-base: #eef2f7;
@@ -271,10 +285,6 @@
         </button>
         <div id="cart-preview" class="hidden"></div>
       </div>
-      <button type="button" id="theme-open" class="nav-item" title="Wygląd i kolory">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128m0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42" /></svg>
-        <span class="hidden md:inline">Wygląd</span>
-      </button>
       <button type="button" class="nav-item" data-nav="admin" title="Panel">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" /></svg>
         <span class="hidden md:inline">Panel</span>
@@ -597,7 +607,6 @@
 
     // --- Preferencje użytkownika (localStorage) ---
     const THEME_KEY = 'maslo3d_theme';
-    const ACCENT_KEY = 'maslo3d_accent';
     // Lista porównania (max 3 produkty)
     const COMPARE_MAX = 3;
     let compareIds = [];
@@ -629,22 +638,14 @@
     let shopQuery = '';
     let shopTags = [];   // wybrane tagi (checkboxy)
     let shopSort = 'name'; // name | time | weight | stock
-    // Motyw: zawsze ciemny (W12); użytkownik wybiera tylko kolor akcentu.
-    let currentTheme = 'dark';
-    let currentAccent = 'sky';
+    // Motyw: zawsze ciemny z wiodącym kolorem #009473.
     function applyTheme() {
       var html = document.documentElement;
       html.classList.remove('dark', 'light', 'highcontrast');
       html.classList.add('dark');
-      html.classList.remove('accent-sky', 'accent-violet', 'accent-emerald', 'accent-amber', 'accent-rose');
-      html.classList.add('accent-' + currentAccent);
-      try { localStorage.setItem(THEME_KEY, 'dark'); localStorage.setItem(ACCENT_KEY, currentAccent); } catch (e) {}
+      try { localStorage.setItem(THEME_KEY, 'dark'); } catch (e) {}
     }
     function loadThemePrefs() {
-      try {
-        var a = localStorage.getItem(ACCENT_KEY);
-        if (['sky', 'violet', 'emerald', 'amber', 'rose'].indexOf(a) !== -1) currentAccent = a;
-      } catch (e) {}
       applyTheme();
     }
 
@@ -1014,6 +1015,7 @@
       audioUnlocked = true;
       ensureAudio();
       loadSounds();
+      syncPrinterNoise();
     }
     // Dźwięki tylko na stronie głównej (brak ?o/?orderId/?p/?admin/&view=checkout)
     function isShopView() {
@@ -1023,7 +1025,7 @@
       return !p.get('o') && !p.get('orderId') && !p.get('p') && p.get('admin') !== 'true' && p.get('view') !== 'checkout' && p.get('view') !== 'koszyk';
     }
     function playClickSound() {
-      if (!isShopView() || !audioCtx || !dingBuffer) return;
+      if (!audioCtx || !dingBuffer) return;
       try {
         if (clickSrc) { try { clickSrc.stop(); } catch (e) {} }
         var src = audioCtx.createBufferSource();
@@ -1041,6 +1043,25 @@
       if (now - lastTypeSound < 80) return;
       lastTypeSound = now;
       playClickSound();
+    }
+    // Dźwięk pracy drukarki (microwave-running.ogg) — gra tylko, gdy któraś drukarka drukuje,
+    // i dopiero po odblokowaniu audio (gest użytkownika). Głośność 5%.
+    var printerNoise = null;
+    function syncPrinterNoise() {
+      var hasActive = Object.keys(shakeActive || {}).some(function (k) { return shakeActive[k]; });
+      if (hasActive && audioUnlocked) {
+        if (!printerNoise) {
+          try {
+            printerNoise = new Audio('microwave-running.ogg');
+            printerNoise.loop = true;
+            printerNoise.volume = 0.05;
+            printerNoise.play().catch(function () {});
+          } catch (e) {}
+        }
+      } else if (printerNoise) {
+        try { printerNoise.pause(); } catch (e) {}
+        printerNoise = null;
+      }
     }
 
     /* --- Rozwijanie zestawów (bundles) w koszyku --- */
@@ -1427,6 +1448,7 @@
     function scheduleShake(active) {
       shakeActive = active || {};
       const hasActive = Object.keys(shakeActive).some(function (k) { return shakeActive[k]; });
+      syncPrinterNoise();
       if (hasActive && !shakeRaf) {
         shakeRaf = requestAnimationFrame(shakeLoop);
       } else if (!hasActive && shakeRaf) {
@@ -1665,35 +1687,37 @@
       if (!prev) return;
       var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
       if (ids.length === 0) {
-        prev.innerHTML =
-          '<p class="text-sm text-slate-400 px-4 py-3">Koszyk jest pusty.</p>' +
-          '<button data-nav="shop" class="w-full py-2.5 text-sm font-semibold rounded-lg bg-accent text-slate-900 transition-colors">Przejdź do zakupów</button>';
-        var g = prev.querySelector('[data-nav="shop"]');
-        if (g) g.addEventListener('click', function () { navigate(homeUrl()); });
+        prev.innerHTML = '<p class="text-sm text-slate-400 px-4 py-3">Koszyk jest pusty.</p>' +
+          '<div class="px-4 pb-3 text-xs text-slate-500">Kliknij ikonę, aby przejść do koszyka.</div>';
         prev.classList.add('hidden');
         return;
       }
-      var html = '';
+      var s = cartSummary();
+      var html =
+        '<div class="px-4 py-3 border-b border-white/10">' +
+          '<p class="text-sm font-semibold text-white">Koszyk</p>' +
+          '<p class="text-xs text-slate-500">' + s.count + ' szt. / ' + fmtGrams(cartWeight()) + '</p>' +
+        '</div>' +
+        '<div class="px-3 py-2">';
       ids.slice(0, 3).forEach(function (id) {
         var p = products[id];
+        var imgSrc = imageSrcFor(p.imageUrl || p.image);
         html +=
-          '<div class="flex gap-3 items-center py-2">' +
-          '<span class="w-8 h-8 rounded-lg overflow-hidden bg-white/5 shrink-0 grid place-items-center">' +
-          (p.img ? '<img src="' + esc(p.img) + '" class="w-full h-full object-cover">' : esc(p.price)) +
+          '<div class="flex gap-3 items-center py-1.5">' +
+          '<span class="w-10 h-10 rounded-lg overflow-hidden bg-white/5 shrink-0 grid place-items-center border border-white/10">' +
+          (imgSrc ? '<img src="' + esc(imgSrc) + '" alt="" class="w-full h-full object-cover">' : '<span class="text-xs text-slate-500">' + esc(p.price) + '</span>') +
           '</span>' +
           '<div class="min-w-0 flex-1">' +
-          '<div class="text-sm font-medium truncate">' + esc(p.name) + '</div>' +
+          '<div class="text-sm font-medium text-slate-100 truncate">' + esc(p.name) + '</div>' +
           (p.price ? '<div class="text-xs text-slate-500">' + esc(p.price) + ' zł</div>' : '') +
           '</div>' +
-          '<span class="text-xs text-slate-400">×' + cart[id] + '</span>' +
+          '<span class="text-xs text-slate-400">&#215;' + cart[id] + '</span>' +
           '</div>';
       });
-      if (ids.length > 3) html += '<div class="text-xs text-slate-500 py-1">+ ' + (ids.length - 3) + ' więcej…</div>';
-      html += '<button data-cart-go="koszyk" class="w-full mt-1 py-2.5 text-sm font-semibold rounded-lg bg-accent text-slate-900 transition-colors">Do koszyka</button>';
+      if (ids.length > 3) html += '<div class="text-xs text-slate-500 px-1 py-1">+ ' + (ids.length - 3) + ' więcej…</div>';
+      html += '</div>';
       prev.innerHTML = html;
       prev.classList.remove('hidden');
-      var go = prev.querySelector('[data-cart-go="koszyk"]');
-      if (go) go.addEventListener('click', function () { navigate(basePath() + 'koszyk'); });
     }
     // Inicjalizuje kontrolkę koszyka (ikona + hover-podgląd) w górnym pasku
     function initCartControl() {
@@ -3257,15 +3281,6 @@
         }
       });
 
-      // W12: motyw + akcent (tylko tryb ciemny)
-      document.getElementById('theme-open').addEventListener('click', function () { document.getElementById('theme-modal').classList.remove('hidden'); });
-      document.getElementById('theme-close').addEventListener('click', function () { document.getElementById('theme-modal').classList.add('hidden'); });
-      document.getElementById('theme-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
-      document.getElementById('theme-accent-buttons').addEventListener('click', function (e) {
-        var b = e.target.closest('[data-accent]');
-        if (b) { currentAccent = b.dataset.accent; applyTheme(); }
-      });
-
       // W7: porównywarka
       document.getElementById('compare-open').addEventListener('click', function () { renderCompareResult(); document.getElementById('compare-modal').classList.remove('hidden'); });
       document.getElementById('compare-close').addEventListener('click', function () { document.getElementById('compare-modal').classList.add('hidden'); });
@@ -4189,22 +4204,6 @@
         <div id="ck-body"></div>
         <div id="ck-footer" class="mt-4"></div>
       </div>
-    </div>
-  </div>
-
-  <!-- ============ WYGLĄD / MOTYW (modal) ============ -->
-  <div id="theme-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-    <div class="bg-panel border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
-      <h3 class="text-lg font-bold text-white mb-4">Wygląd</h3>
-      <p class="text-sm text-slate-400 mb-2">Kolor akcentu</p>
-      <div class="flex gap-2 mb-5" id="theme-accent-buttons">
-        <button data-accent="sky" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#38bdf8"></button>
-        <button data-accent="violet" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#a78bfa"></button>
-        <button data-accent="emerald" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#34d399"></button>
-        <button data-accent="amber" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#fbbf24"></button>
-        <button data-accent="rose" class="accent-dot w-8 h-8 rounded-full border-2 border-white/20 hover:border-white/60" style="background:#fb7185"></button>
-      </div>
-      <button id="theme-close" class="w-full py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Gotowe</button>
     </div>
   </div>
 
