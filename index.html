@@ -705,7 +705,7 @@
       return window.location.pathname.replace(/\/[^\/]*$/, '/');
     }
     function homeUrl() { return basePath(); }
-    function adminUrl() { return basePath() + 'admin'; }
+    function adminUrl() { return basePath() + '?admin=true'; }
     function pageUrl() {
       return window.location.origin + window.location.pathname;
     }
@@ -1221,11 +1221,11 @@
     function goCheckout(step) {
       cartStep = step || 1;
       closeCart();
-      navigate(basePath() + 'koszyk');
+      navigate(basePath() + '?view=koszyk');
     }
     function backToCart() {
       cartStep = 1;
-      navigate(basePath() + 'koszyk');
+      navigate(basePath() + '?view=koszyk');
     }
 
     /* ------------------------------------------------------------------
@@ -2895,14 +2895,28 @@
           const chunks = splitModelChunks(b122);
           const docRef = db.collection('products').doc(id);
           const col = docRef.collection('model');
-          // usunięcie starych chunków (jeśli edycja)
-          const oldSnap = await col.limit(500).get();
-          const delBatch = db.batch();
-          oldSnap.forEach(function (d) { delBatch.delete(d.ref); });
-          await delBatch.commit();
-          const batch = db.batch();
-          chunks.forEach(function (c, i) { batch.set(col.doc(String(i)), { index: i, total: chunks.length, data: c }); });
-          await batch.commit();
+
+          // Usunięcie starych chunków (jeśli edycja) w pod-batchach.
+          const oldSnap = await col.orderBy('index').get();
+          const oldRefs = [];
+          oldSnap.forEach(function (d) { oldRefs.push(d.ref); });
+          for (let oi = 0; oi < oldRefs.length; oi += 300) {
+            const sub = db.batch();
+            for (let oj = oi; oj < Math.min(oi + 300, oldRefs.length); oj++) sub.delete(oldRefs[oj]);
+            await sub.commit();
+          }
+
+          // Zapis nowych chunków w pod-batchach po ~10 (unika ogromnych żądań do Firestore).
+          const perBatch = 10;
+          for (let ci = 0; ci < chunks.length; ci += perBatch) {
+            const sub = db.batch();
+            for (let j = ci; j < Math.min(ci + perBatch, chunks.length); j++) {
+              sub.set(col.doc(String(j)), { index: j, total: chunks.length, data: chunks[j] });
+            }
+            await sub.commit();
+            if (submitBtn) submitBtn.textContent = 'Zapisywanie… (' + Math.min(ci + perBatch, chunks.length) + '/' + chunks.length + ')';
+            await new Promise(function (r) { setTimeout(r, 0); }); // odśwież UI między batchami
+          }
           docData.model = { name: newFile.name, totalChunks: chunks.length, size: b122.length };
         }
 
@@ -3603,10 +3617,6 @@
         <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
       </section>
     </main>
-
-    <footer class="border-t border-white/5 py-8 text-center text-sm text-slate-500">
-      <p>Masło3D - projekt szkolny</p>
-    </footer>
 
     <!-- MODAL: ŚLEDŹ PACZKĘ (wpisz 3-cyfrowy numer zamówienia) -->
     <div id="track-lookup-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
