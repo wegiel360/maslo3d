@@ -591,10 +591,10 @@
     const LAST_ORDER_KEY = 'maslo3d_last_order';
 
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
-    let settings = { mode: 'queue', banner: '', adminPasswordHash: '' }; // tryb, komunikat, hash hasła
+    let settings = { mode: 'queue', banner: '', adminPasswordHash: '', whistle: true }; // tryb, komunikat, hash hasła, gwizdek
     let firstDataLoaded = false; // true po pierwszym dostarczeniu produktów i ustawień (unika flasha "Produkt nie znaleziony")
     let ordersLoaded = false; // true po pierwszej paczce zamówień (odróżnia „szukam" od „nie znaleziono")
-    let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, draft, createdAt}
+    let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, whistleEnabled, bundle, createdAt}
     let orders = {};   // id -> {name, className, delivery, items, totalWeight, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
     // Koszyk (productId -> ilość), zapisywany lokalnie
@@ -638,7 +638,6 @@
     }
     // Filtr sklepu (stan przetrwa re-render)
     let shopQuery = '';
-    let shopTags = [];   // wybrane tagi (checkboxy)
     let shopSort = 'name'; // name | time | weight | stock
     // Motyw: zawsze ciemny z wiodącym kolorem #009473.
     function applyTheme() {
@@ -1096,6 +1095,21 @@
     }
 
     /* --- Szacowany czas druku dla zamówienia --- */
+    /* --- Czas druku wg przypisanej drukarki (Makerbot Sketch / Bambus) --- */
+    function printerTimeSec(item, printerKey) {
+      if (printerKey === 'bambus' && item.printTimeSecBambus) return item.printTimeSecBambus;
+      return item.printTimeSec || 0;
+    }
+
+    // Łączny czas druku zamówienia wg przypisanej drukarki (o.printer).
+    function orderPrintSec(o) {
+      if (!o) return 0;
+      var key = o.printer && PRINTERS[o.printer] ? o.printer : 'makerbot';
+      return (o.items || []).reduce(function (sum, it) {
+        return sum + (printerTimeSec(it, key) * (it.qty || 1));
+      }, 0);
+    }
+
     function estPrintTime(items) {
       var total = 0;
       items.forEach(function (ci) {
@@ -1243,7 +1257,7 @@
     function startListeners() {
       // Ustawienia (cena za gram, tryb, baner)
       unsubSettings = db.collection('settings').doc('main').onSnapshot(function (snap) {
-        settings = snap.exists ? snap.data() : settings;
+        settings = snap.exists ? Object.assign({ whistle: true }, snap.data()) : settings;
         if (!firstDataLoaded && productsLoaded) firstDataLoaded = true;
         // Faza 3: pomiń render lokalnych projekcji (serwer potwierdzi i rerenderuje raz)
         if (!(snap.metadata && snap.metadata.hasPendingWrites)) scheduleRender();
@@ -1321,16 +1335,10 @@
       let keys = Object.keys(products).filter(function (id) {
         const p = products[id];
         if (!p) return false;
-        if (p.draft) return false; // W10: draft ukryty w sklepie
         const q = shopQuery.trim().toLowerCase();
         if (q) {
-          const hay = (p.name || '').toLowerCase() + ' ' + ((p.tags || []).join(' ').toLowerCase());
+          const hay = (p.name || '').toLowerCase();
           if (hay.indexOf(q) === -1) return false;
-        }
-        if (shopTags.length > 0) {
-          const ptags = p.tags || [];
-          const hit = shopTags.some(function (t) { return ptags.indexOf(t) !== -1; });
-          if (!hit) return false;
         }
         return true;
       });
@@ -1340,7 +1348,7 @@
         grid.innerHTML =
           '<div class="col-span-full text-center py-16 text-slate-400">' +
           '  <p class="text-lg">Brak ofert w sklepie.</p>' +
-          '  <p class="text-sm mt-1">' + ((shopQuery || shopTags.length) ? 'Zmień filtry, aby zobaczyć więcej.' : 'Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.') + '</p>' +
+          '  <p class="text-sm mt-1">Zajrzyj wkrótce - nowe wydruki pojawią się tutaj.</p>' +
           '</div>';
         return;
       }
@@ -1374,9 +1382,6 @@
       card.setAttribute('data-goto-product', id);
       const inCmp = compareIds.indexOf(id) !== -1;
       const cmpCls = inCmp ? 'bg-accent text-slate-900 border-accent' : 'text-slate-300 border-white/20 hover:border-accent';
-      const tagChips = (p.tags || []).map(function (t) {
-        return '<span class="text-[10px] text-slate-400 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">' + esc(t) + '</span>';
-      }).join('');
       card.innerHTML =
         '<div class="relative">' +
           productImageHtml(p) +
@@ -1390,37 +1395,15 @@
           '<div class="flex flex-wrap items-center gap-1.5">' +
             '<span class="text-xs text-slate-400">' + fmtTime(p.printTimeSec) + '</span>' +
             (p.weight ? '<span class="text-xs text-slate-400">' + fmtGrams(p.weight) + '</span>' : '') +
-            (tagChips ? '<span class="flex flex-wrap gap-1">' + tagChips + '</span>' : '') +
           '</div>' +
           '<div class="mt-auto flex items-center justify-between">' +
-            (p.whistleFreq && (p.tags ? p.tags.indexOf('whistle') !== -1 || p.tags.indexOf('gwizdek') !== -1 : true)
+            (settings.whistle && p.whistleEnabled !== false && p.whistleFreq
               ? '<button type="button" data-whistle="' + id + '" class="text-xs text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-1 hover:bg-sky-500/20 transition">Odtwórz</button>'
               : '<span></span>') +
             '<button type="button" data-add-cart="' + id + '" class="text-xs px-3 py-1.5 rounded-full bg-accent hover:bg-sky-400 text-slate-900 font-semibold transition">Do koszyka</button>' +
           '</div>' +
         '</div>';
       return card;
-    }
-
-    // Rynek tagów: zbuduj checkboxy polskiego filtru tagów (W3)
-    function renderShopTagFilters() {
-      const wrap = document.getElementById('shop-tag-filters');
-      if (!wrap) return;
-      const noTags = document.getElementById('shop-no-tags');
-      const all = {};
-      Object.keys(products).forEach(function (id) {
-        const p = products[id];
-        if (!p || p.draft) return;
-        (p.tags || []).forEach(function (t) { if (t) all[t] = true; });
-      });
-      const tags = Object.keys(all).sort(function (a, b) { return a.localeCompare(b, 'pl'); });
-      if (tags.length === 0) { if (noTags) noTags.classList.remove('hidden'); wrap.innerHTML = ''; return; }
-      if (noTags) noTags.classList.add('hidden');
-      wrap.innerHTML = tags.map(function (t) {
-        return '<label class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-base border border-white/10 text-xs text-slate-300 cursor-pointer hover:border-accent">' +
-          '<input type="checkbox" class="accent-accent shop-tag-cb" value="' + esc(t) + '"' + (shopTags.indexOf(t) !== -1 ? ' checked' : '') + ' />' +
-          esc(t) + '</label>';
-      }).join('');
     }
 
     // Render sekcji drukarek (dwóch kart) na stronie głównej nad ofertami.
@@ -1510,7 +1493,7 @@
         var s = imageSrcFor(ph);
         if (s && s.length > 20) galleryImages.push(s);
       });
-      var isWhistle = p.whistleFreq && (p.tags ? p.tags.indexOf('whistle') !== -1 || p.tags.indexOf('gwizdek') !== -1 : true);
+      var isWhistle = settings.whistle && p.whistleEnabled !== false && p.whistleFreq;
       var isBundle = !!(p.bundle && p.bundle.items);
       var outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
 
@@ -2043,6 +2026,7 @@
           productName: p.name,
           weight: p.weight || 0,
           printTimeSec: p.printTimeSec || 0,
+          printTimeSecBambus: p.printTimeSecBambus || 0,
           qty: qty,
           status: 'W kolejce'
         });
@@ -2305,13 +2289,15 @@
     function renderAdminSettings() {
       document.getElementById('set-banner').value = settings.banner || '';
       document.getElementById('set-mode').value = settings.mode || '';
+      var sw = document.getElementById('set-whistle');
+      if (sw) sw.checked = settings.whistle !== false;
     }
 
     /* --- W9: zbiorcza edycja stanów magazynowych --- */
     function renderBulkStock() {
       var list = document.getElementById('bulk-stock-list');
       if (!list) return;
-      var keys = Object.keys(products).filter(function (id) { return !products[id].draft; });
+      var keys = Object.keys(products);
       if (keys.length === 0) { list.innerHTML = '<p class="text-slate-500 text-sm col-span-full">Brak opublikowanych produktów.</p>'; return; }
       list.innerHTML = keys.map(function (id) {
         var p = products[id];
@@ -2359,7 +2345,7 @@
         }
       });
       pending.sort(function (a, b) {
-        return (a.o.estPrintSec || 0) - (b.o.estPrintSec || 0);
+        return orderPrintSec(a.o) - orderPrintSec(b.o);
       });
       if (pending.length === 0) {
         list.innerHTML = '<p class="text-slate-500 text-sm py-2">Brak w kolejce</p>';
@@ -2368,6 +2354,8 @@
       list.innerHTML = pending.map(function (item, idx) {
         var o = item.o;
         var items = o.items || [];
+        var osec = orderPrintSec(o);
+        var okey = o.printer && PRINTERS[o.printer] ? o.printer : 'makerbot';
         var rows = items.map(function (it, i) {
           var st = itemStatus(o, it);
           var chip = statusColor(st).split(' ')[0] + ' border border-current/20 px-2 py-0.5 rounded-full text-[10px] font-semibold';
@@ -2380,7 +2368,7 @@
           return '<div class="flex items-center gap-2 px-2 py-1.5 border-t border-white/5">' +
             '<div class="flex-1 min-w-0">' +
             '  <span class="text-sm text-slate-100 truncate">' + esc(it.productName) + ' <span class="text-slate-500">x' + it.qty + '</span></span>' +
-            '  <span class="text-xs text-slate-500 ml-2">' + fmtTime((it.printTimeSec || 0) * it.qty) + '</span>' +
+            '  <span class="text-xs text-slate-500 ml-2">' + fmtTime(printerTimeSec(it, okey) * it.qty) + '</span>' +
             '  <span class="inline-block ml-2 ' + chip + '">' + esc(st) + '</span>' +
             '</div>' +
             '<div class="shrink-0">' + btn + '</div>' +
@@ -2392,7 +2380,7 @@
           '<div class="flex-1">' +
           '  <span class="font-bold text-sm text-white">#' + esc(o.orderCode || '?') + '</span> ' +
           '  <span class="text-sm text-slate-300">' + esc(o.name) + ' ' + esc(o.className) + '</span>' +
-          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + ' (' + items.length + ' poz.)</p>' +
+          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(osec) + ' (' + items.length + ' poz.)</p>' +
           '</div>' +
           (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition">Całość: Drukuj</button>' : '') +
           '</div>' +
@@ -2437,7 +2425,7 @@
             : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>') +
           '</div>' +
           '<div class="flex-1 min-w-0">' +
-          '  <p class="font-semibold text-white truncate">' + esc(p.name) + (p.draft ? ' <span class="text-[10px] text-amber-300 bg-amber-400/10 border border-amber-400/30 rounded-full px-2 py-0.5 ml-1">Draft</span>' : '') + '</p>' +
+          '  <p class="font-semibold text-white truncate">' + esc(p.name) + '</p>' +
           '  <p class="text-sm text-slate-400">' + fmtTime(p.printTimeSec) + ' druku' +
           (p.weight ? ' (' + fmtGrams(p.weight) + ')' : '') + '</p>' +
           '</div>' +
@@ -2495,19 +2483,7 @@
 
       list.querySelectorAll('[data-download-model]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-          var pid = btn.dataset.downloadModel;
-          var p = products[pid];
-          if (!p || !p.modelFile || !p.modelFile.data) { alert('Brak pliku 3D.'); return; }
-          // Base122 -> surowe bajty -> blob -> pobierz
-          var binary = base122ToBinary(p.modelFile.data);
-          var blob = new Blob([binary], { type: 'application/octet-stream' });
-          var a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = p.modelFile.name || 'model.stl';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(a.href);
+          downloadProductModel(btn.dataset.downloadModel);
         });
       });
 
@@ -2692,10 +2668,13 @@
       document.getElementById('product-print-time-m').value = Math.floor(((p.printTimeSec || 0) % 3600) / 60) || '';
       document.getElementById('product-manual-time-h').value = Math.floor((p.manualTimeSec || 0) / 3600) || '';
       document.getElementById('product-manual-time-m').value = Math.floor(((p.manualTimeSec || 0) % 3600) / 60) || '';
+      document.getElementById('product-print-time-bambus-h').value = Math.floor((p.printTimeSecBambus || 0) / 3600) || '';
+      document.getElementById('product-print-time-bambus-m').value = Math.floor(((p.printTimeSecBambus || 0) % 3600) / 60) || '';
+      document.getElementById('product-manual-time-bambus-h').value = Math.floor((p.manualTimeSecBambus || 0) / 3600) || '';
+      document.getElementById('product-manual-time-bambus-m').value = Math.floor(((p.manualTimeSecBambus || 0) % 3600) / 60) || '';
       document.getElementById('product-stock').value = p.stock || 0;
-      document.getElementById('product-draft').checked = !!p.draft;
       document.getElementById('product-whistle-freq').value = Array.isArray(p.whistleFreq) ? p.whistleFreq.join(', ') : (p.whistleFreq || '');
-      document.getElementById('product-tags').value = (p.tags || []).join(', ');
+      document.getElementById('product-whistle-enabled').checked = p.whistleEnabled !== false;
       var savedColor = p.color || 'czekolada';
       document.getElementById('product-color').value = savedColor;
       if (window.__setModelColor) {
@@ -2721,12 +2700,18 @@
       }
       var modelInfo = document.getElementById('product-model-info');
       var modelDataInput = document.getElementById('product-model-data');
-      if (p.modelFile && p.modelFile.data) {
+      if (p.model && p.model.name) {
+        modelDataInput.value = '';
+        modelInfo.textContent = p.model.name + (p.model.size ? ' (Base122) ' : '') + ' — obecny plik (możesz wczytać nowy).';
+        var rb2 = document.getElementById('refresh-thumb-btn');
+        if (rb2) rb2.classList.remove('hidden');
+      } else if (p.modelFile && p.modelFile.data) {
+        // migracja starych danych (inline) — trzymaj roboczo, przy zapisie przejdzie na chunki
         modelDataInput.value = p.modelFile.data;
         var modelKb = (p.modelFile.data.length * 8 / 7) / 1024;
         modelInfo.textContent = p.modelFile.name + ' (' + modelKb.toFixed(1) + ' KB - Base122) — obecny plik (możesz wczytać nowy).';
-        var rb2 = document.getElementById('refresh-thumb-btn');
-        if (rb2) rb2.classList.remove('hidden');
+        var rb2b = document.getElementById('refresh-thumb-btn');
+        if (rb2b) rb2b.classList.remove('hidden');
       } else {
         modelDataInput.value = '';
         modelInfo.textContent = '';
@@ -2736,56 +2721,148 @@
       document.getElementById('admin-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function handleProductSubmit(e) {
+    /* --- Plik modelu 3D dzielony na chunki (omija limit 1 MiB dokumentu) --- */
+    var MODEL_CHUNK_CHARS = 700000; // Base122, < ~700 KB -> bezpieczne dla pojedynczego pola Firestore
+    function splitModelChunks(b122) {
+      var chunks = [];
+      for (var i = 0; i < b122.length; i += MODEL_CHUNK_CHARS) chunks.push(b122.slice(i, i + MODEL_CHUNK_CHARS));
+      if (chunks.length === 0) chunks.push('');
+      return chunks;
+    }
+    // File -> Uint8Array
+    function fileToUint8(file) {
+      return new Promise(function (res, rej) {
+        var fr = new FileReader();
+        fr.onload = function () { res(new Uint8Array(fr.result)); };
+        fr.onerror = rej;
+        fr.readAsArrayBuffer(file);
+      });
+    }
+    // Scala chunki => pełny string Base122 (bądź '' gdy brak). Fallback: brak.
+    function loadModelBytes(productId) {
+      return db.collection('products').doc(productId).collection('model').orderBy('index').get()
+        .then(function (snap) {
+          var total = 0, parts = [];
+          snap.forEach(function (d) {
+            var dt = d.data();
+            parts[dt.index] = dt.data;
+            if ((dt.total || 0) > total) total = dt.total;
+          });
+          var out = '';
+          for (var i = 0; i < total; i++) out += (parts[i] || '');
+          return out;
+        });
+    }
+    // Pobiera model produktu (Base122) z chunków lub starych danych inline.
+    function productModelString(p, productId) {
+      if (p && p.modelFile && p.modelFile.data) return Promise.resolve(p.modelFile.data);
+      if (!productId) return Promise.resolve('');
+      return loadModelBytes(productId);
+    }
+    // Baz122 -> blob -> pobierz plik 3D.
+    function downloadProductModel(pid) {
+      var p = products[pid];
+      if (!p) return;
+      productModelString(p, pid).then(function (b122) {
+        if (!b122) { alert('Brak pliku 3D.'); return; }
+        var binary = base122ToBinary(b122);
+        var blob = new Blob([binary], { type: 'application/octet-stream' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (p.model && p.model.name) || (p.modelFile && p.modelFile.name) || 'model.stl';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      }).catch(function (er) { alert('Błąd pobierania pliku 3D: ' + (er.message || er)); });
+    }
+
+    function readHm(idH, idM) {
+      return (parseInt(document.getElementById(idH).value, 10) || 0) * 3600
+        + (parseInt(document.getElementById(idM).value, 10) || 0) * 60;
+    }
+
+    async function handleProductSubmit(e) {
       e.preventDefault();
-      const name = document.getElementById('product-name').value.trim();
-      const desc = document.getElementById('product-desc').value.trim();
-      const weight = parseFloat(document.getElementById('product-weight').value) || 0;
-      const printTimeSec = (parseInt(document.getElementById('product-print-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-print-time-m').value, 10) || 0) * 60;
-      const manualTimeSec = (parseInt(document.getElementById('product-manual-time-h').value, 10) || 0) * 3600 + (parseInt(document.getElementById('product-manual-time-m').value, 10) || 0) * 60;
-      const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
-      const productColor = document.getElementById('product-color').value || 'czekolada';
-      const imageDataUrl = document.getElementById('product-image-data').value;
-      const whistleRaw = document.getElementById('product-whistle-freq').value.trim();
-      const whistleFreq = whistleRaw ? whistleRaw.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v) && v > 0; }) : [];
-      const tagsStr = document.getElementById('product-tags').value.trim();
-      const tags = tagsStr ? tagsStr.split(',').map(function (t) { return t.trim(); }).filter(Boolean) : [];
-      const modelDataUrl = document.getElementById('product-model-data').value;
-      const modelInput = document.getElementById('product-model');
-      const modelFileName = modelInput.files[0] ? modelInput.files[0].name : '';
-      let bundle = null;
-      if (document.getElementById('product-bundle').checked) {
-        if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
-        bundle = { items: bundleItems.slice() };
-      }
-      const authorLink = document.getElementById('product-author-link').value.trim() || '';
-      const photos = productPhotos.slice();
+      const submitBtn = document.getElementById('admin-form-submit');
+      const errBox = document.getElementById('admin-form-error');
+      function err(msg) { if (errBox) { errBox.textContent = msg; errBox.classList.remove('hidden'); } }
 
-      if (!name) { alert('Podaj nazwę produktu.'); return; }
-      if (!modelDataUrl) { alert('Dodaj plik 3D (STL) — jest wymagany (z niego powstaje miniaturka).'); return; }
-      if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
+      try {
+        if (errBox) errBox.classList.add('hidden');
+        const name = document.getElementById('product-name').value.trim();
+        const desc = document.getElementById('product-desc').value.trim();
+        const weight = parseFloat(document.getElementById('product-weight').value) || 0;
+        const printTimeSec = readHm('product-print-time-h', 'product-print-time-m');           // Makerbot Sketch
+        const manualTimeSec = readHm('product-manual-time-h', 'product-manual-time-m');         // Makerbot Sketch (zmierzony)
+        const printTimeSecBambus = readHm('product-print-time-bambus-h', 'product-print-time-bambus-m'); // Bambus
+        const manualTimeSecBambus = readHm('product-manual-time-bambus-h', 'product-manual-time-bambus-m'); // Bambus (zmierzony)
+        const stock = parseInt(document.getElementById('product-stock').value, 10) || 0;
+        const productColor = document.getElementById('product-color').value || 'czekolada';
+        const imageDataUrl = document.getElementById('product-image-data').value;
+        const whistleRaw = document.getElementById('product-whistle-freq').value.trim();
+        const whistleFreq = whistleRaw ? whistleRaw.split(',').map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v) && v > 0; }) : [];
+        const whistleEnabled = !!document.getElementById('product-whistle-enabled').checked;
+        const modelInput = document.getElementById('product-model');
+        const newFile = modelInput.files && modelInput.files[0] ? modelInput.files[0] : null;
+        let bundle = null;
+        if (document.getElementById('product-bundle').checked) {
+          if (bundleItems.length === 0) { alert('Zaznaczono zestaw, ale nie dodano żadnych pozycji.'); return; }
+          bundle = { items: bundleItems.slice() };
+        }
+        const authorLink = document.getElementById('product-author-link').value.trim() || '';
+        const photos = productPhotos.slice();
 
-      var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink, color: productColor, photos: photos, draft: !!document.getElementById('product-draft').checked };
+        if (!name) { alert('Podaj nazwę produktu.'); return; }
+        if (!editingProductId && !modelInput.files[0]) { alert('Dodaj plik 3D (STL) — jest wymagany.'); return; }
+        if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
 
-      if (editingProductId) {
-        if (imageDataUrl) {
-          docData.image = imageDataUrl;
+        var docData = {
+          name: name, desc: desc, weight: weight,
+          printTimeSec: printTimeSec, manualTimeSec: manualTimeSec,
+          printTimeSecBambus: printTimeSecBambus, manualTimeSecBambus: manualTimeSecBambus,
+          stock: stock, whistleFreq: whistleFreq, whistleEnabled: whistleEnabled,
+          bundle: bundle, authorLink: authorLink, color: productColor, photos: photos
+        };
+
+        const id = editingProductId || genUUID();
+
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Zapisywanie...'; }
+
+        // Nowy plik modelu -> zapisz chunki w subkolekcji, doc trzyma tylko metadane.
+        if (newFile) {
+          const binary = await fileToUint8(newFile);
+          const b122 = base122_encode(binary);
+          const chunks = splitModelChunks(b122);
+          const docRef = db.collection('products').doc(id);
+          const col = docRef.collection('model');
+          // usunięcie starych chunków (jeśli edycja)
+          const oldSnap = await col.limit(500).get();
+          const delBatch = db.batch();
+          oldSnap.forEach(function (d) { delBatch.delete(d.ref); });
+          await delBatch.commit();
+          const batch = db.batch();
+          chunks.forEach(function (c, i) { batch.set(col.doc(String(i)), { index: i, total: chunks.length, data: c }); });
+          await batch.commit();
+          docData.model = { name: newFile.name, totalChunks: chunks.length, size: b122.length };
         }
-        if (modelDataUrl) {
-          docData.modelFile = { name: modelFileName, data: modelDataUrl };
+
+        if (editingProductId) {
+          if (imageDataUrl) docData.image = imageDataUrl;
+          await db.collection('products').doc(id).update(docData);
+          flash('Produkt zaktualizowany.');
+        } else {
+          docData.image = imageDataUrl || '';
+          docData.createdAt = Date.now();
+          await db.collection('products').doc(id).set(docData);
+          flash('Produkt dodany.');
         }
-        db.collection('products').doc(editingProductId).update(docData)
-          .then(function () { flash('Produkt zaktualizowany.'); resetProductForm(); })
-          .catch(function (err) { alert('Błąd: ' + err.message); });
-      } else {
-        docData.image = imageDataUrl || '';
-        if (modelDataUrl) {
-          docData.modelFile = { name: modelFileName, data: modelDataUrl };
-        }
-        docData.createdAt = Date.now();
-        db.collection('products').doc(genUUID()).set(docData)
-          .then(function () { flash('Produkt dodany.'); resetProductForm(); })
-          .catch(function (err) { alert('Błąd: ' + err.message); });
+        resetProductForm();
+      } catch (er) {
+        console.error('Zapis produktu nieudany:', er);
+        err('Błąd: ' + (er && er.message ? er.message : er));
+      } finally {
+        if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = editingProductId ? 'Zapisz zmiany' : 'Dodaj produkt'; }
       }
     }
 
@@ -2805,8 +2882,8 @@
       document.getElementById('product-model-info').textContent = '';
       document.getElementById('product-color').value = 'czekolada';
       if (window.__setModelColor) window.__setModelColor('czekolada', true);
-      var draftCb = document.getElementById('product-draft');
-      if (draftCb) draftCb.checked = false;
+      var weCb = document.getElementById('product-whistle-enabled');
+      if (weCb) weCb.checked = true;
       productPhotos = [];
       renderPhotoPreviews();
       resetBundleUI();
@@ -2819,9 +2896,10 @@
       e.preventDefault();
       const banner = document.getElementById('set-banner').value.trim();
       const mode = document.getElementById('set-mode').value;
+      const whistle = !!document.getElementById('set-whistle')?.checked;
 
-      db.collection('settings').doc('main').set({ mode: mode, banner: banner, adminPasswordHash: settings.adminPasswordHash || '' })
-        .then(function () { flash('Ustawienia zapisane.'); })
+      db.collection('settings').doc('main').set({ mode: mode, banner: banner, whistle: whistle, adminPasswordHash: settings.adminPasswordHash || '' })
+        .then(function () { settings.whistle = whistle; flash('Ustawienia zapisane.'); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
 
@@ -2882,7 +2960,7 @@
       }).join(', ');
       if (!itemsText) itemsText = '—';
 
-      const timeCol = o.estPrintSec ? fmtTime(o.estPrintSec) : fmtGrams(o.totalWeight);
+      const timeCol = (function () { const s = orderPrintSec(o); return s ? fmtTime(s) : fmtGrams(o.totalWeight); }());
 
       tr.innerHTML =
         '<td class="py-3 px-3 text-xs font-mono text-slate-400">' + esc(shortId(id)) + '</td>' +
@@ -2993,7 +3071,6 @@
         { label: 'Nazwa', val: function (p) { return '<span class="font-semibold text-white">' + esc(p.name) + '</span>'; } },
         { label: 'Czas druku', val: function (p) { return fmtTimeLong(p.printTimeSec); } },
         { label: 'Waga', val: function (p) { return p.weight ? fmtGrams(p.weight) : '—'; } },
-        { label: 'Tagi', val: function (p) { return (p.tags || []).length ? (p.tags || []).map(esc).join(', ') : '—'; } },
         { label: 'Stan magazynu', val: function (p) { return p.stock != null ? p.stock + ' szt.' : '—'; } },
         { label: 'Gwizdek', val: function (p) { return p.whistleFreq ? (Array.isArray(p.whistleFreq) ? p.whistleFreq.map(function (f) { return f >= 1000 ? (f / 1000).toFixed(1) + 'kHz' : f + 'Hz'; }).join(' + ') : p.whistleFreq) : '—'; } }
       ];
@@ -3181,18 +3258,7 @@
         }
         btn = e.target.closest('[data-download-model]');
         if (btn) {
-          var dp = products[btn.dataset.downloadModel];
-          if (dp && dp.modelFile && dp.modelFile.data) {
-            var binary = base122ToBinary(dp.modelFile.data);
-            var blob = new Blob([binary], { type: 'application/octet-stream' });
-            var a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = dp.modelFile.name || 'model.stl';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-          }
+          downloadProductModel(btn.dataset.downloadModel);
           return;
         }
       });
@@ -3292,6 +3358,7 @@
 
       // Dzwonek przy klikaniu przycisków/linków (100%)
       document.addEventListener('click', function (e) {
+        if (e.target.closest && e.target.closest('[data-whistle], #pd-whistle')) return; // gwizdek gra tylko ton
         if (e.target.closest && e.target.closest('button, a, select, [role="button"], input[type="button"], input[type="submit"]')) {
           unlockAudio();
           playClickSound();
@@ -3319,7 +3386,6 @@
       renderCartStep(); // wypełnij widok /koszyk na start
       initCartControl(); // kontrolka koszyka z hover-podglądem
       updateCartCount();
-      renderShopTagFilters();
       // Zasoby (tła SVG + obrazy drukarek) — po załadowaniu odśwież sekcję drukarek
       loadAssets().then(function () { renderPrinters(); }).catch(function (e) { console.error('assets:', e); });
 
@@ -3340,13 +3406,6 @@
       }
       var shopSortEl = document.getElementById('shop-sort');
       if (shopSortEl) { shopSortEl.value = shopSort; shopSortEl.addEventListener('change', function () { shopSort = this.value; renderShop(); }); }
-      var tagFilters = document.getElementById('shop-tag-filters');
-      if (tagFilters) tagFilters.addEventListener('change', function (e) {
-        if (e.target.classList.contains('shop-tag-cb')) {
-          shopTags = Array.prototype.slice.call(tagFilters.querySelectorAll('.shop-tag-cb')).filter(function (cb) { return cb.checked; }).map(function (cb) { return cb.value; });
-          renderShop();
-        }
-      });
 
       // W7: porównywarka
       document.getElementById('compare-open').addEventListener('click', function () { renderCompareResult(); document.getElementById('compare-modal').classList.remove('hidden'); });
@@ -3450,11 +3509,6 @@
                 <option value="stock">Stan magazynowy</option>
               </select>
             </div>
-          </div>
-          <div class="mt-3">
-            <p class="text-xs text-slate-500 mb-2">Filtruj po tagach:</p>
-            <div id="shop-tag-filters" class="flex flex-wrap gap-2"></div>
-            <p id="shop-no-tags" class="text-xs text-slate-500 hidden">Brak tagów.</p>
           </div>
         </div>
         <div id="shop-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"></div>
@@ -3577,6 +3631,12 @@
               <button type="submit"
                 class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz ustawienia</button>
             </div>
+            <div class="lg:col-span-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input id="set-whistle" type="checkbox" class="accent-accent" />
+                <span class="text-sm text-slate-400">Włącz gwizdek (przycisk „Odtwórz" na ofertach)</span>
+              </label>
+            </div>
           </form>
         </div>
       </section>
@@ -3607,10 +3667,6 @@
                 <label class="block text-sm text-slate-400 mb-1">Stan magazynowy</label>
                 <input id="product-stock" type="number" min="0" value="0"
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
-                <label class="flex items-center gap-2 mt-2 cursor-pointer">
-                  <input id="product-draft" type="checkbox" class="accent-accent" />
-                  <span class="text-xs text-slate-400">Draft — ukryj w sklepie (W10)</span>
-                </label>
               </div>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -3637,6 +3693,33 @@
                 </div>
               </div>
             </div>
+            <div class="border-t border-white/10 pt-4">
+              <p class="text-sm font-semibold text-slate-300 mb-3">Bambus (opcjonalnie — czas druku na Bambus)</p>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="block text-sm text-slate-400 mb-1">Czas druku</label>
+                  <div class="flex gap-2">
+                    <input id="product-print-time-bambus-h" type="number" min="0" max="999"
+                      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                    <span class="text-slate-500 self-center">h</span>
+                    <input id="product-print-time-bambus-m" type="number" min="0" max="59"
+                      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                    <span class="text-slate-500 self-center">m</span>
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm text-slate-400 mb-1">Czas zmierzony</label>
+                  <div class="flex gap-2">
+                    <input id="product-manual-time-bambus-h" type="number" min="0" max="999"
+                      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                    <span class="text-slate-500 self-center">h</span>
+                    <input id="product-manual-time-bambus-m" type="number" min="0" max="59"
+                      class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                    <span class="text-slate-500 self-center">m</span>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="grid grid-cols-2 gap-4">
               <div>
                 <label class="block text-sm text-slate-400 mb-1">Częst. gwizdka (Hz)</label>
@@ -3644,9 +3727,10 @@
                   class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
               </div>
               <div>
-                <label class="block text-sm text-slate-400 mb-1">Tagi (przecinki)</label>
-                <input id="product-tags" type="text" placeholder="whistle, fast, bundle"
-                  class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
+                <label class="flex items-center gap-2 cursor-pointer mt-6">
+                  <input id="product-whistle-enabled" type="checkbox" checked class="accent-accent" />
+                  <span class="text-sm text-slate-400">Włącz przycisk „Odtwórz"</span>
+                </label>
               </div>
             </div>
             <div>
@@ -3761,6 +3845,7 @@
               <input id="product-author-link" type="text" placeholder="https://www.thingiverse.com/thing:12345"
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white focus:border-accent focus:outline-none" />
             </div>
+            <div id="admin-form-error" class="hidden text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 mb-2"></div>
             <div class="flex gap-3 pt-1">
               <button type="submit" id="admin-form-submit"
                 class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz produkt</button>
@@ -4081,9 +4166,13 @@
 
     // Re-generacja miniaturki z już wczytanego modelu (bez ponownego wybierania pliku)
     async function refreshFromStored() {
-      const data = document.getElementById('product-model-data').value;
       const info = document.getElementById('product-image-info');
       const btn = document.getElementById('refresh-thumb-btn');
+      let data = document.getElementById('product-model-data').value;
+      // Brak w pamięci (produkt wczytany z DB) -> pobierz z chunków.
+      if (!data && editingProductId && typeof loadModelBytes === 'function') {
+        try { data = await loadModelBytes(editingProductId); } catch (e) {}
+      }
       if (!data) { alert('Najpierw wczytaj plik 3D (STL).'); return; }
       if (btn) { btn.disabled = true; btn.textContent = 'Generuję…'; }
       try {
