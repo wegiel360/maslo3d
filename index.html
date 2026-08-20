@@ -630,7 +630,14 @@
         var p = products[id];
         return '<span class="flex items-center gap-1 bg-base/60 border border-white/10 rounded-full px-2 py-1 text-xs text-white">' +
           (p ? esc(p.name) : id) +
-          '<button data-compare-remove="' + id + '" class="text-slate-400 hover:text-red-300 text-sm leading-none">&times;</button></span>';
+          '<button data-compare-remove="' + id + '" title="Usuń z porównania" class="text-slate-400 hover:text-red-300 leading-none p-0.5">' +
+            '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M12 3v3"/>' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M5 6h14"/>' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M5 6l-2.5 6.5h5L5 6z"/>' +
+              '<path stroke-linecap="round" stroke-linejoin="round" d="M19 6l-2.5 6.5h5L19 6z"/>' +
+            '</svg>' +
+          '</button></span>';
       }).join('');
       var countText = document.getElementById('compare-count');
       if (countText) countText.textContent = compareIds.length;
