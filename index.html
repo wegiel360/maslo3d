@@ -540,12 +540,13 @@
         return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
       } catch (e) { return ''; }
     }
-    // Które drukarki aktualnie drukują (na podstawie zamówień ze statusem 'Drukuje się').
+    // Które drukarki aktualnie drukują (na podstawie pozycji zamówień w statusie 'Drukuje się').
     function activePrinters() {
       var active = {};
       Object.values(orders).forEach(function (o) {
-        if (!o || o.isDeleted || o.status !== 'Drukuje się') return;
-        if (o.printer && PRINTERS[o.printer]) active[o.printer] = true;
+        if (!o || o.isDeleted) return;
+        var anyPrinting = (o.items || []).some(function (it) { return itemStatus(o, it) === 'Drukuje się'; });
+        if (anyPrinting && o.printer && PRINTERS[o.printer]) active[o.printer] = true;
       });
       return active;
     }
@@ -592,6 +593,7 @@
     // Centralny stan aplikacji (aktualizowany przez listenery Firebase)
     let settings = { mode: 'queue', banner: '', adminPasswordHash: '' }; // tryb, komunikat, hash hasła
     let firstDataLoaded = false; // true po pierwszym dostarczeniu produktów i ustawień (unika flasha "Produkt nie znaleziony")
+    let ordersLoaded = false; // true po pierwszej paczce zamówień (odróżnia „szukam" od „nie znaleziono")
     let products = {}; // id -> {name, desc, weight, stock, image, printTimeSec, manualTimeSec, whistleFreq, tags, bundle, draft, createdAt}
     let orders = {};   // id -> {name, className, delivery, items, totalWeight, estPrintSec, status, orderCode, queuedBacklog, createdAt, isDeleted, deleteReason}
 
@@ -1015,7 +1017,7 @@
       audioUnlocked = true;
       ensureAudio();
       loadSounds();
-      syncPrinterNoise();
+      if (typeof syncPrinterNoise === 'function') syncPrinterNoise();
     }
     // Dźwięki tylko na stronie głównej (brak ?o/?orderId/?p/?admin/&view=checkout)
     function isShopView() {
@@ -1047,15 +1049,25 @@
     // Dźwięk pracy drukarki (microwave-running.ogg) — gra tylko, gdy któraś drukarka drukuje,
     // i dopiero po odblokowaniu audio (gest użytkownika). Głośność 5%.
     var printerNoise = null;
+    var printerNoiseWanted = false;
     function syncPrinterNoise() {
       var hasActive = Object.keys(shakeActive || {}).some(function (k) { return shakeActive[k]; });
+      printerNoiseWanted = hasActive;
       if (hasActive && audioUnlocked) {
         if (!printerNoise) {
           try {
             printerNoise = new Audio('microwave-running.ogg');
             printerNoise.loop = true;
             printerNoise.volume = 0.05;
-            printerNoise.play().catch(function () {});
+            var p = printerNoise.play();
+            if (p && p.catch) p.catch(function () {
+              // Autoplay mógł chwilowo blokować start — spróbuj ponownie, jeśli nadal drukuje.
+              setTimeout(function () {
+                if (printerNoiseWanted && audioUnlocked && printerNoise) {
+                  try { printerNoise.play().catch(function () {}); } catch (e) {}
+                }
+              }, 600);
+            });
           } catch (e) {}
         }
       } else if (printerNoise) {
@@ -1191,8 +1203,9 @@
     }
 
     // Kroki 2-4 na osobnej stronie /koszyk (pushState — bez przeładowania)
-    function goCheckout() {
-      cartStep = 2;
+    // Domyślnie otwieramy koszyk od kroku 1 (zawartość), a nie od razu "Dane".
+    function goCheckout(step) {
+      cartStep = step || 1;
       closeCart();
       navigate(basePath() + 'koszyk');
     }
@@ -1256,6 +1269,7 @@
         .where('isDeleted', '==', false)
         .limit(500)
         .onSnapshot(function (snap) {
+          ordersLoaded = true;
           snap.docChanges().forEach(function (change) {
             if (change.type === 'added' || change.type === 'modified') {
               orders[change.doc.id] = change.doc.data();
@@ -1846,7 +1860,7 @@
       var btn = container.querySelector('#cart-next');
       if (btn) btn.addEventListener('click', function () {
         if (cartSummary().count === 0) { flash('Koszyk jest pusty'); return; }
-        goCheckout();
+        goCheckout(2);
       });
     }
 
@@ -2029,7 +2043,8 @@
           productName: p.name,
           weight: p.weight || 0,
           printTimeSec: p.printTimeSec || 0,
-          qty: qty
+          qty: qty,
+          status: 'W kolejce'
         });
         totalWeight += (p.weight || 0) * qty;
       });
@@ -2138,7 +2153,8 @@
       trackingKey = key;
       const orderId = resolveTrackingKey(key);
       if (!orderId) {
-        renderTracking(null, null, true);
+        // Jeśli zamówienia już doszły z Firestore, a kodu nie ma -> wyraźny błąd (nie spinner).
+        renderTracking(null, null, !ordersLoaded);
         return;
       }
       if (trackingSubscribedId !== orderId) {
@@ -2166,8 +2182,22 @@
         return;
       }
 
-      // Zamówienie anulowane lub usunięte
+      // Zamówienie nie istnieje lub anulowane
       if (!order || order.isDeleted) {
+        if (!order) {
+          box.innerHTML =
+            '<div class="text-center max-w-md mx-auto">' +
+            '  <div class="mx-auto w-16 h-16 rounded-full bg-red-500/20 border border-red-400/40 flex items-center justify-center mb-4">' +
+            '    <svg class="w-8 h-8 text-red-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">' +
+            '      <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />' +
+            '    </svg>' +
+            '  </div>' +
+            '  <h2 class="text-xl font-bold text-white">Nie znaleziono zamówienia</h2>' +
+            '  <p class="text-sm text-slate-400 mt-2">Nie ma zamówienia o podanym numerze w systemie. Sprawdź poprawność numeru i spróbuj ponownie.</p>' +
+            '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+            '</div>';
+          return;
+        }
         const reason = order && order.deleteReason ? order.deleteReason : '';
         box.innerHTML =
           '<div class="text-center max-w-md mx-auto">' +
@@ -2186,37 +2216,39 @@
       const idx = STATUSES.indexOf(order.status);
       const current = idx < 0 ? 0 : idx;
 
-      let stepsHtml = '';
+      // Stepper: węzły (kółka + etykiety) i elastyczne łączniki między nimi (bez nakładania).
+      let stepsHtml = '<div class="flex-1"></div>';
       STATUSES.forEach(function (s, i) {
         const done = i < current;
         const active = i === current;
-        stepsHtml +=
-          '<div class="flex-1 relative">' +
-          '  <div class="flex flex-col items-center">' +
-          '    <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ' +
+        const node =
+          '<div class="flex flex-col items-center shrink-0 w-14">' +
+          '  <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm transition-all ' +
           (done ? 'bg-emerald-500 text-slate-900'
-            : active ? 'bg-accent text-slate-900 ring-4 ring-accent/30'
+            : active ? 'bg-accent text-slate-900 ring-4 ring-accent/25'
             : 'bg-panel border border-white/10 text-slate-500') +
           '">' +
           (done
             ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>'
             : (i + 1)) +
           '  </div>' +
-          '  <p class="mt-2 text-xs font-semibold ' + (active ? 'text-accent' : 'text-slate-400') + '">' + s + '</p>' +
-          '  </div>' +
-          (i < STATUSES.length - 1
-            ? '<div class="absolute top-5 left-0 h-0.5 ' + (done ? 'bg-emerald-500' : 'bg-white/10') + '" style="width:100%; transform:translate(0,-50%)"></div>'
-            : '') +
+          '  <p class="mt-2 text-xs font-semibold text-center leading-tight ' + (active ? 'text-accent' : 'text-slate-400') + '">' + s + '</p>' +
           '</div>';
+        stepsHtml += node;
+        stepsHtml += (i < STATUSES.length - 1)
+          ? '<div class="h-0.5 flex-1 rounded-full ' + (done ? 'bg-emerald-500' : 'bg-white/10') + '"></div>'
+          : '<div class="flex-1"></div>';
       });
 
-      // Lista zamówionych przedmiotów
+      // Lista zamówionych przedmiotów (z indywidualnym statusem każdej pozycji)
       let itemsHtml = '';
       (order.items || []).forEach(function (it) {
+        const st = itemStatus(order, it);
         itemsHtml +=
-          '<div class="flex justify-between py-1">' +
-          '  <span class="text-slate-400">' + esc(it.productName) + ' (' + fmtTime(it.printTimeSec) + ' x ' + it.qty + ')</span>' +
-          '  <span class="text-white">' + fmtTime(it.printTimeSec * it.qty) + '</span>' +
+          '<div class="flex items-center gap-2 py-1">' +
+          '  <span class="flex-1 text-slate-400">' + esc(it.productName) + ' <span class="text-slate-600">x' + it.qty + '</span></span>' +
+          '  <span class="text-white text-xs">' + fmtTime((it.printTimeSec || 0) * it.qty) + '</span>' +
+          '  <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full border ' + statusColor(st).split(' ')[0] + ' border-current/20">' + esc(st) + '</span>' +
           '</div>';
       });
 
@@ -2247,7 +2279,7 @@
         '  </div>' +
         '  <div class="bg-panel border border-white/10 rounded-2xl p-5">' +
         '    <p class="text-xs uppercase tracking-wide text-slate-500 mb-4">Postęp realizacji</p>' +
-        '    <div class="flex">' + stepsHtml + '</div>' +
+        '    <div class="flex w-full items-center">' + stepsHtml + '</div>' +
         '  </div>' +
         '  <div class="text-center mt-6">' +
         '    <a href="' + pageUrl() + '" class="inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
@@ -2307,7 +2339,15 @@
       batch.commit().then(function () { flash('Stany magazynowe zaktualizowane.'); }).catch(function (e) { alert('Błąd: ' + e.message); });
     }
 
-    /* --- Kolejka druku (posortowana wg czasu) --- */
+    /* --- Kolejka druku (posortowana wg czasu, grupowana wg zamówienia) --- */
+    // Status pozycji: własny (item.status), z fallbackiem na status zamówienia dla starszych danych.
+    function itemStatus(o, it) {
+      if (it && it.status) return it.status;
+      var s = o ? o.status : '';
+      if (STATUSES.indexOf(s) !== -1) return s;
+      return 'W kolejce';
+    }
+
     function renderPrintQueue() {
       var list = document.getElementById('admin-queue');
       if (!list) return;
@@ -2327,23 +2367,50 @@
       }
       list.innerHTML = pending.map(function (item, idx) {
         var o = item.o;
-        return '<div class="flex items-center gap-3 bg-base/50 border border-white/10 rounded-xl p-3">' +
+        var items = o.items || [];
+        var rows = items.map(function (it, i) {
+          var st = itemStatus(o, it);
+          var chip = statusColor(st).split(' ')[0] + ' border border-current/20 px-2 py-0.5 rounded-full text-[10px] font-semibold';
+          var btn =
+            st === 'W kolejce'
+              ? '<button onclick="setItemStatus(\'' + item.id + '\',' + i + ',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition">Drukuj</button>'
+              : st === 'Drukuje się'
+                ? '<button onclick="setItemStatus(\'' + item.id + '\',' + i + ',\'Doręczone\')" class="text-xs px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition">Gotowe</button>'
+                : '<span class="text-xs text-emerald-400">&#10003;</span>';
+          return '<div class="flex items-center gap-2 px-2 py-1.5 border-t border-white/5">' +
+            '<div class="flex-1 min-w-0">' +
+            '  <span class="text-sm text-slate-100 truncate">' + esc(it.productName) + ' <span class="text-slate-500">x' + it.qty + '</span></span>' +
+            '  <span class="text-xs text-slate-500 ml-2">' + fmtTime((it.printTimeSec || 0) * it.qty) + '</span>' +
+            '  <span class="inline-block ml-2 ' + chip + '">' + esc(st) + '</span>' +
+            '</div>' +
+            '<div class="shrink-0">' + btn + '</div>' +
+            '</div>';
+        });
+        return '<div class="bg-base/50 border border-white/10 rounded-xl p-3">' +
+          '<div class="flex items-center gap-3">' +
           '<span class="text-lg font-bold text-accent w-8 text-center">' + (idx + 1) + '</span>' +
           '<div class="flex-1">' +
           '  <span class="font-bold text-sm text-white">#' + esc(o.orderCode || '?') + '</span> ' +
           '  <span class="text-sm text-slate-300">' + esc(o.name) + ' ' + esc(o.className) + '</span>' +
-          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + '</p>' +
+          '  <p class="text-xs text-slate-400">Czas: ' + fmtTime(o.estPrintSec) + ' (' + items.length + ' poz.)</p>' +
           '</div>' +
-          '<div class="flex gap-1">' +
-          (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition">Drukuj</button>' : '') +
-          (o.status === 'Drukuje się' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Doręczone\')" class="text-xs px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition">Gotowe</button>' : '') +
-          '</div></div>';
+          (o.status === 'W kolejce' ? '<button onclick="setOrderStatus(\'' + item.id + '\',\'Drukuje się\')" class="text-xs px-2 py-1 rounded-lg bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition">Całość: Drukuj</button>' : '') +
+          '</div>' +
+          rows.join('') +
+          '</div>';
       }).join('');
     }
 
     function setOrderStatus(id, status) {
       db.collection('orders').doc(id).update({ status: status })
         .then(function () { flash('Status: ' + status); })
+        .catch(function (e) { alert('Błąd: ' + e.message); });
+    }
+
+    // Zapisuje status pojedynczej pozycji (items.{idx}.status) bez ruszania statusu zamówienia.
+    function setItemStatus(orderId, idx, status) {
+      db.collection('orders').doc(orderId).update({ ['items.' + idx + '.status']: status })
+        .then(function () { flash('Pozycja: ' + status); })
         .catch(function (e) { alert('Błąd: ' + e.message); });
     }
 
@@ -2452,10 +2519,10 @@
       var info = document.getElementById('product-model-info');
       if (!file) return;
 
-      var allowed = ['stl', '3mf'];
+      var allowed = ['stl'];
       var ext = file.name.split('.').pop().toLowerCase();
       if (allowed.indexOf(ext) === -1) {
-        alert('Dozwolone formaty: STL, 3MF');
+        alert('Dozwolony format: STL (3MF nie jest już obsługiwany).');
         e.target.value = '';
         return;
       }
@@ -2471,7 +2538,7 @@
       var reader = new FileReader();
       reader.onload = function (ev) {
         var dataUrl = ev.target.result;
-        // Surowe bajty modelu (STL/3MF) -> Base122
+        // Surowe bajty modelu (STL) -> Base122
         var binary = dataUrlToBinaryBytes(dataUrl);
         var b122 = base122_encode(binary);
         document.getElementById('product-model-data').value = b122;
@@ -2695,7 +2762,7 @@
       const photos = productPhotos.slice();
 
       if (!name) { alert('Podaj nazwę produktu.'); return; }
-      if (!modelDataUrl) { alert('Dodaj plik 3D (STL/3MF) — jest wymagany (z niego powstaje miniaturka).'); return; }
+      if (!modelDataUrl) { alert('Dodaj plik 3D (STL) — jest wymagany (z niego powstaje miniaturka).'); return; }
       if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
 
       var docData = { name: name, desc: desc, weight: weight, printTimeSec: printTimeSec, manualTimeSec: manualTimeSec, stock: stock, whistleFreq: whistleFreq, tags: tags, bundle: bundle, authorLink: authorLink, color: productColor, photos: photos, draft: !!document.getElementById('product-draft').checked };
@@ -3675,8 +3742,8 @@
               </div>
             </div>
             <div>
-              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL / 3MF, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
-              <input id="product-model" type="file" accept=".stl,.3mf"
+              <label class="block text-sm text-slate-400 mb-1">Plik 3D (STL, <span class="text-accent">wymagany</span> — z niego powstaje miniaturka)</label>
+              <input id="product-model" type="file" accept=".stl"
                 class="w-full text-sm text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-base file:text-accent file:font-semibold file:cursor-pointer" />
               <input id="product-model-data" type="hidden" value="" />
               <p id="product-model-info" class="text-xs text-slate-500 mt-1"></p>
@@ -3772,45 +3839,50 @@
   </div>
 
   <!-- ============================================================
-       Generowanie miniaturki z modelu 3D (STL/3MF) przez Three.js.
+       Generowanie miniaturki z modelu 3D (STL) przez Three.js.
        Model wypełnia cały kwadrat, obrót XYZ z kontrolek w formularzu.
        Render 400px AVIF/PNG -> Base122 (#product-image-data).
        ============================================================ -->
   <script type="module">
     import * as THREE from 'three';
     import { STLLoader } from 'three/addons/loaders/STLLoader.js';
-    import { ThreeMFLoader } from 'three/addons/loaders/3MFLoader.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
     function bytesToArrayBuffer(bytes) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     }
 
-    // Automatyczna detekcja: 3MF to ZIP (PK\x03\x04), STL to wszystko inne
+    // Typ modelu: STL jest jedynym obsługiwanym formatem. 3MF (ZIP PK\x03\x04) odrzucamy jawnie.
     function detectModelFormat(bytes) {
-      if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) return '3mf';
+      if (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4b && bytes[2] === 0x03 && bytes[3] === 0x04) {
+        throw new Error('Format 3MF nie jest już obsługiwany – zapisz model jako plik STL i spróbuj ponownie.');
+      }
       return 'stl';
+    }
+
+    // Walidacja binarnego STL: nagłówek 80 B + 4 B liczby trójkątów + trójkąty po 50 B.
+    // ASCII (tekstowy) STL przepuszczamy – obsługuje go STLLoader.
+    function assertValidStl(bytes) {
+      if (!bytes || bytes.length < 84) {
+        throw new Error('Plik STL jest za mały lub uszkodzony (brak danych).');
+      }
+      const count = (bytes[80] | (bytes[81] << 8) | (bytes[82] << 16) | (bytes[83] << 24)) >>> 0;
+      const binaryLen = 84 + count * 50;
+      // Jeśli długość pasuje do nagłówka binarnego, to binarne STL — zweryfikuj całość.
+      if (count > 0 && bytes.length === binaryLen) return;
+      // Nie pasuje -> prawdopodobnie ASCII; zostawiamy STLLoaderowi detekcję.
     }
 
     function parseProduct(bytes, format) {
       const fmt = format || detectModelFormat(bytes);
-      const ab = bytesToArrayBuffer(bytes);
-      if (fmt === 'stl') {
-        const geom = new STLLoader().parse(ab);
-        const mat = new THREE.MeshStandardMaterial({ color: modelColor, metalness: 0.15, roughness: 0.65 });
-        return Promise.resolve(new THREE.Mesh(geom, mat));
+      if (fmt !== 'stl') {
+        return Promise.reject(new Error('Nieobsługiwany format modelu: ' + fmt + '.'));
       }
-      return new Promise((resolve, reject) => {
-        const loader = new ThreeMFLoader();
-        loader.parse(ab, '', (obj) => {
-          obj.traverse((child) => {
-            if (child.isMesh) {
-              child.material = new THREE.MeshStandardMaterial({ color: modelColor, metalness: 0.15, roughness: 0.65 });
-            }
-          });
-          resolve(obj);
-        }, reject);
-      });
+      assertValidStl(bytes);
+      const ab = bytesToArrayBuffer(bytes);
+      const geom = new STLLoader().parse(ab);
+      const mat = new THREE.MeshStandardMaterial({ color: modelColor, metalness: 0.15, roughness: 0.65 });
+      return Promise.resolve(new THREE.Mesh(geom, mat));
     }
 
     const deg2rad = (d) => d * Math.PI / 180;
@@ -4012,7 +4084,7 @@
       const data = document.getElementById('product-model-data').value;
       const info = document.getElementById('product-image-info');
       const btn = document.getElementById('refresh-thumb-btn');
-      if (!data) { alert('Najpierw wczytaj plik 3D (STL/3MF).'); return; }
+      if (!data) { alert('Najpierw wczytaj plik 3D (STL).'); return; }
       if (btn) { btn.disabled = true; btn.textContent = 'Generuję…'; }
       try {
         await generateModelThumbnail(base122ToBinary(data));
