@@ -673,6 +673,37 @@
     function trackingLink(orderCode) {
       return pageUrl() + '?o=' + orderCode;
     }
+
+    /* --- Ładne adresy produktów: /maslo3d/burza-v5 (slug z nazwy) --- */
+    function slugify(text) {
+      var map = { 'ą': 'a', 'ć': 'c', 'ę': 'e', 'ł': 'l', 'ń': 'n', 'ó': 'o', 'ś': 's', 'ź': 'z', 'ż': 'z' };
+      return String(text || '').toLowerCase()
+        .replace(/[ąćęłńóśźż]/g, function (c) { return map[c]; })
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'produkt';
+    }
+    var __slugToId = {};
+    function rebuildProductSlugs() {
+      __slugToId = {};
+      Object.keys(products).forEach(function (id) {
+        var p = products[id];
+        if (!p) return;
+        __slugToId[slugify(p.name)] = id;
+      });
+    }
+    function productIdBySlug(slug) {
+      return (slug && __slugToId[slug]) || null;
+    }
+    // Ostatni segment ścieżki po bazie (np. 'burza-v5'), '' gdy strona główna.
+    function currentPathSegment() {
+      var path = window.location.pathname;
+      var base = basePath();
+      var rest = path.indexOf(base) === 0 ? path.slice(base.length) : '';
+      rest = rest.replace(/^\/+|\/+$/g, '');
+      if (/\.html?$/i.test(rest)) return '';
+      if (rest === 'admin' || rest === 'koszyk') return '';
+      return rest;
+    }
     // Nawigacja SPA bez przeładowania strony (pushState) — koszyk pozostaje w pamięci
     function navigate(to) {
       try { history.pushState({}, '', to); } catch (e) { window.location.href = to; }
@@ -1081,7 +1112,9 @@
       const params = new URLSearchParams(window.location.search);
       const code = params.get('o');
       const orderId = params.get('orderId');
-      const productId = params.get('p');
+      // Produkt przez ?p=UUID albo ładny adres /maslo3d/slug-produktu
+      const slugSeg = currentPathSegment();
+      const productId = params.get('p') || productIdBySlug(slugSeg);
       const isAdmin = params.get('admin') === 'true' || /\/admin\/?$/.test(window.location.pathname);
       const isKoszyk = params.get('view') === 'koszyk' || /\/koszyk\/?$/.test(window.location.pathname);
 
@@ -1100,6 +1133,11 @@
         resetCartStepIfNeeded();
         document.getElementById('view-product').classList.remove('hidden');
         renderProductDetail(productId);
+      } else if (slugSeg && !isKoszyk && !isAdmin) {
+        // Ładny adres, ale produkt jeszcze nie dotarł z Firestore -> placeholder ładowania
+        resetCartStepIfNeeded();
+        document.getElementById('view-product').classList.remove('hidden');
+        renderProductDetail('__loading__' + slugSeg);
       } else if (isKoszyk) {
         if (cartStep < 2) cartStep = 1;
         document.getElementById('view-koszyk').classList.remove('hidden');
@@ -1171,7 +1209,7 @@
       var params = new URLSearchParams(window.location.search);
       var code = params.get('o');
       var orderId = params.get('orderId');
-      var productId = params.get('p');
+      var productId = params.get('p') || productIdBySlug(currentPathSegment());
       if (code) initTracking('o:' + code);
       else if (orderId) initTracking('id:' + orderId);
       else if (productId && isViewOpen('view-product')) renderProductDetail(productId);
@@ -1196,6 +1234,7 @@
             delete products[change.doc.id];
           }
         });
+        rebuildProductSlugs();
         productsLoaded = true;
         if (!firstDataLoaded && settings !== undefined) firstDataLoaded = true;
         if (!(snap.metadata && snap.metadata.hasPendingWrites)) scheduleRender();
@@ -1422,6 +1461,7 @@
       var isWhistle = settings.whistle && p.whistleEnabled !== false && p.whistleFreq;
       var isBundle = !!(p.bundle && p.bundle.items);
       var outOfStock = settings.mode === 'active' && (!p.stock || p.stock <= 0);
+      var totalSlides = galleryImages.length + (p.preview ? 1 : 0);
 
       var whistleLabel = '';
       if (isWhistle) {
@@ -1432,16 +1472,19 @@
       var html =
         '<div class="grid grid-cols-1 md:grid-cols-2 gap-8">' +
         '  <div id="pd-gallery-wrap" class="relative aspect-square w-full max-h-[70vh] rounded-2xl overflow-hidden bg-black/40 shadow-xl select-none" style="touch-action:pan-y">' +
+        (p.preview
+          ? '<img data-preview-detail="' + esc(productId) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain" decoding="async" />'
+          : '') +
         (galleryImages.length > 0
           ? galleryImages.map(function (gi, gidx) {
-            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain ' + (gidx === 0 ? '' : 'hidden') + '" loading="lazy" decoding="async" />';
+            return '<img data-gid="' + gidx + '" src="' + esc(gi) + '" alt="' + esc(p.name) + '" class="pd-gall-img w-full h-full object-contain ' + ((gidx === 0 && !p.preview) ? '' : 'hidden') + '" loading="lazy" decoding="async" />';
           }).join('') +
-          (galleryImages.length > 1
+          (totalSlides > 1
             ? '<button type="button" data-gall-prev class="gallery-arrow absolute left-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&larr;</button>' +
               '<button type="button" data-gall-next class="gallery-arrow absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 text-lg z-10">&rarr;</button>' +
-              '<div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">' + galleryImages.map(function (_, d) { return '<span data-gall-dot="' + d + '" class="w-2 h-2 rounded-full bg-white/60 ' + (d === 0 ? 'opacity-100' : 'opacity-40') + '"></span>'; }).join('') + '</div>'
+              '<div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1 z-10">' + Array.apply(null, { length: totalSlides }).map(function (_, d) { return '<span data-gall-dot="' + d + '" class="w-2 h-2 rounded-full bg-white/60 ' + (d === 0 && !p.preview ? 'opacity-100' : 'opacity-40') + '"></span>'; }).join('') + '</div>'
             : '')
-          : '  <div class="w-full h-full flex items-center justify-center text-slate-600"><svg class="w-24 h-24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg></div>') +
+          : (p.preview ? '' : '  <div class="w-full h-full flex items-center justify-center text-slate-600"><svg class="w-24 h-24" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg></div>')) +
         '  </div>' +
         '  <div class="flex flex-col">' +
         '    <div class="flex items-center justify-between gap-3">' +
@@ -1468,6 +1511,24 @@
         '</div>';
 
       box.innerHTML = html;
+
+      // Animowany preview 360 jako pierwszy slajd galerii (fallback: jawny błąd).
+      var pdPrevImg = box.querySelector('[data-preview-detail]');
+      if (pdPrevImg) {
+        loadPreviewGif(productId).then(function (url) {
+          if (!pdPrevImg || !pdPrevImg.isConnected) return;
+          if (url) {
+            pdPrevImg.onerror = function () {
+              var w = document.getElementById('pd-gallery-wrap');
+              if (w) w.innerHTML = previewErrorHtml();
+            };
+            pdPrevImg.src = url;
+          } else {
+            var w2 = document.getElementById('pd-gallery-wrap');
+            if (w2) w2.innerHTML = previewErrorHtml();
+          }
+        });
+      }
 
       // Galeria dopasowuje rozmiar do proporcji autowciętego (auto-trim) zdjęcia
       var wrapEl = document.getElementById('pd-gallery-wrap');
@@ -1577,6 +1638,8 @@
           if (!out) return '';
           try {
             var bin = base122ToBinary(out);
+            // Walidacja nagłówka GIF (GIF87a/GIF89a) — uszkodzone dane -> stan błędu.
+            if (bin.length < 6 || bin[0] !== 0x47 || bin[1] !== 0x49 || bin[2] !== 0x46 || bin[3] !== 0x38) return '';
             var blob = new Blob([bin], { type: 'image/gif' });
             var url = URL.createObjectURL(blob);
             __previewCache[productId] = { url: url, size: meta.size || 0 };
@@ -1589,11 +1652,10 @@
     // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
     function productImageHtml(id, p) {
       // Animowany preview (jeśli dostępny) — renderuje przez osobny loader data-preview.
-      // data-fallback = statyczna miniaturka na wypadek nieudanego ładowania GIF-a.
+      // Gdy GIF się nie załaduje -> jawny błąd zamiast cichego fallbacku.
       if (p.preview) {
-        var fb = imageSrcFor(p.imageUrl || p.image);
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
-          '<img data-preview="' + esc(id) + '"' + (fb ? ' data-fallback="' + esc(fb) + '"' : '') + ' data-src="" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" decoding="async" />' +
+          '<img data-preview="' + esc(id) + '" data-src="" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" decoding="async" />' +
           '</div>';
       }
       var img = imageSrcFor(p.imageUrl || p.image);
@@ -1611,12 +1673,31 @@
 
     // W11: załaduj obrazki (data-src -> src) — na żądanie lub od razu poza siatką
     let shopImgObserver = null;
+    // Jawny stan błędu animacji (karta produktu).
+    function previewErrorHtml() {
+      return '<div class="w-full h-full flex flex-col items-center justify-center gap-1 bg-red-400/10 text-red-300">' +
+        '  <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">' +
+        '    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />' +
+        '  </svg>' +
+        '  <span class="text-xs font-semibold">Błąd animacji</span>' +
+        '</div>';
+    }
+
     function hydrateImage(img) {
       if (img.dataset.preview) {
+        var showPreviewError = function () {
+          if (!img) return;
+          var wrap = img.parentElement;
+          if (wrap) wrap.innerHTML = previewErrorHtml();
+        };
         loadPreviewGif(img.dataset.preview).then(function (url) {
           if (!img) return;
-          if (url) { img.src = url; }
-          else if (img.dataset.fallback) { img.src = img.dataset.fallback; } // GIF padł -> statyczna miniaturka
+          if (url) {
+            img.onerror = showPreviewError; // blob URL jest, ale GIF niedekodowalny
+            img.src = url;
+          } else {
+            showPreviewError(); // brak danych / błąd dekodowania / odmowa Firestore
+          }
           img.removeAttribute('data-src');
         });
         return;
@@ -2492,7 +2573,9 @@
 
       list.querySelectorAll('[data-preview-product]').forEach(function (btn) {
         btn.addEventListener('click', function () {
-          window.open(pageUrl() + '?p=' + encodeURIComponent(btn.dataset.previewProduct), '_blank');
+          var pp = products[btn.dataset.previewProduct];
+          var pslug = pp ? slugify(pp.name) : '';
+          window.open(pslug ? (homeUrl() + pslug) : (pageUrl() + '?p=' + encodeURIComponent(btn.dataset.previewProduct)), '_blank');
         });
       });
 
@@ -2835,6 +2918,8 @@
         modelInfo.textContent = '';
       }
       document.getElementById('product-preview-data').value = '';
+      var pvImg2 = document.getElementById('gen-preview-img');
+      if (pvImg2) { pvImg2.classList.add('hidden'); pvImg2.src = ''; }
       var pvInfo = document.getElementById('gen-preview-info');
       if (p.preview) {
         var pvKb = Math.round((p.preview.size || 0) * 8 / 7 / 1024);
@@ -3070,6 +3155,8 @@
       document.getElementById('product-model-data').value = '';
       document.getElementById('product-model-info').textContent = '';
       document.getElementById('product-preview-data').value = '';
+      var pvImg3 = document.getElementById('gen-preview-img');
+      if (pvImg3) { pvImg3.classList.add('hidden'); pvImg3.src = ''; }
       var pvInfo3 = document.getElementById('gen-preview-info');
       if (pvInfo3) pvInfo3.textContent = '';
       document.getElementById('product-color').value = 'czekolada';
@@ -3517,7 +3604,9 @@
         }
         btn = e.target.closest('[data-goto-product]');
         if (btn) {
-          navigate('?p=' + encodeURIComponent(btn.dataset.gotoProduct));
+          var gp = products[btn.dataset.gotoProduct];
+          var slug = gp ? slugify(gp.name) : '';
+          navigate(slug ? basePath() + slug : ('?p=' + encodeURIComponent(btn.dataset.gotoProduct)));
           return;
         }
         btn = e.target.closest('[data-whistle]');
@@ -4059,10 +4148,15 @@
                 <input id="anim-y-slider" type="range" min="-180" max="180" step="5" value="0"
                   class="w-full accent-accent cursor-pointer"
                   oninput="window.__setAnimY(this.value)" />
+                <label for="anim-size-slider" class="block text-xs text-slate-500 mt-3 mb-1">Wielkość modelu w animacji (<span id="anim-size-value">100</span>%)</label>
+                <input id="anim-size-slider" type="range" min="1" max="200" step="5" value="100"
+                  class="w-full accent-accent cursor-pointer"
+                  oninput="window.__setAnimSize(this.value)" />
                 <div class="mt-3">
                   <button type="button" id="gen-preview-btn"
                     class="w-full py-2 rounded-xl text-xs font-semibold bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 transition-all">Generuj animację 360°</button>
                   <p id="gen-preview-info" class="text-xs text-slate-500 mt-1"></p>
+                  <img id="gen-preview-img" alt="Podgląd animacji 360" class="hidden mt-2 max-h-56 rounded-xl border border-white/10 bg-black/40" />
                   <input id="product-preview-data" type="hidden" value="" />
                 </div>
                 <label class="block text-xs text-slate-500 mt-3 mb-1">Kolor modelu</label>
@@ -4311,6 +4405,15 @@
       if (lbl) lbl.textContent = Math.round(animYDeg);
       try { localStorage.setItem('maslo3d_anim_y', String(animYDeg)); } catch (e) {}
     };
+    // Wielkość modelu w animacji (%) — mniejszy model = mniej kolorów = mniejszy plik GIF.
+    let animSizePct = 100;
+    try { animSizePct = parseFloat(localStorage.getItem('maslo3d_anim_size')) || 100; } catch (e) {}
+    window.__setAnimSize = function (val) {
+      animSizePct = Math.max(1, Math.min(200, parseFloat(val) || 100));
+      var lbl = document.getElementById('anim-size-value');
+      if (lbl) lbl.textContent = Math.round(animSizePct);
+      try { localStorage.setItem('maslo3d_anim_size', String(animSizePct)); } catch (e) {}
+    };
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
@@ -4500,12 +4603,16 @@
       b.addEventListener('click', function () { window.__setModelColor(this.dataset.modelColor); });
     });
 
-    // Synchronizuj suwak obrotu Y animacji z zapisem lokalnym.
+    // Synchronizuj suwaki animacji (obrót Y, wielkość) z zapisem lokalnym.
     (function () {
       var s = document.getElementById('anim-y-slider');
       if (s) s.value = Math.round(animYDeg);
       var lbl = document.getElementById('anim-y-value');
       if (lbl) lbl.textContent = Math.round(animYDeg);
+      var ss = document.getElementById('anim-size-slider');
+      if (ss) ss.value = Math.round(animSizePct);
+      var slbl = document.getElementById('anim-size-value');
+      if (slbl) slbl.textContent = Math.round(animSizePct);
     })();
 
     // Generuje animowany GIF (pełna orbita 360°) -> Base122 do #product-preview-data.
@@ -4563,8 +4670,8 @@
         if (maxNdc <= 0) break;
         dist *= maxNdc / (targetFill * refTanHalf);
       }
-      // FOV jako niezależny zoom (jak w miniaturce)
-      const renderDist = (dist / sizeFactor) * (Math.tan(deg2rad(REF_FOV) / 2) / Math.tan(deg2rad(currentFov) / 2));
+      // FOV jako niezależny zoom (jak w miniaturce); wielkość modelu reguluje suwak animacji.
+      const renderDist = (dist / (animSizePct / 100)) * (Math.tan(deg2rad(REF_FOV) / 2) / Math.tan(deg2rad(currentFov) / 2));
       camera.near = renderDist / 1000;
       camera.far = renderDist * 1000;
       camera.updateProjectionMatrix();
@@ -4606,11 +4713,19 @@
       encoder.finish();
       const gifBytes = encoder.bytes(); // Uint8Array
 
+      // Podgląd animacji od razu w panelu (blob URL z bajtów GIF).
+      var pvImg = document.getElementById('gen-preview-img');
+      if (pvImg) {
+        pvImg.src = URL.createObjectURL(new Blob([gifBytes], { type: 'image/gif' }));
+        pvImg.classList.remove('hidden');
+      }
+
       // Base122 zapis do ukrytego pola (limit doc ~1MiB; animacja ≥~200KB więc reszta w chunkach przy zapisie)
       const b122 = base122_encode(gifBytes);
       document.getElementById('product-preview-data').value = b122;
       const info = document.getElementById('gen-preview-info');
-      if (info) info.textContent = 'Animacja gotowa: ' + frames + ' klatek, ' + (b122.length / 1024).toFixed(0) + ' KB Base122.';
+      var kbGif = (gifBytes.length / 1024).toFixed(0);
+      if (info) info.textContent = 'Animacja gotowa: ' + frames + ' klatek, ' + kbGif + ' KB GIF (' + (b122.length / 1024).toFixed(0) + ' KB Base122).';
       return b122;
     }
 

@@ -2,18 +2,28 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>Przekierowanie…</title>
+  <title>Masło3D</title>
   <script>
-    var p = location.pathname;
-    var base = p.replace(/\/[^\/]*$/, '/') || '/';
-    var last = p.replace(/\/+$/, '');
-    var seg = last.split('/').pop();
-    if (seg === 'admin') location.replace(base + '?admin=true');
-    else if (seg === 'koszyk') location.replace(base + '?view=koszyk');
-    else location.replace(base);
+    // GitHub Pages serwuje ten plik POD ORYGINALNYM adresem (np. /maslo3d/burza-v5).
+    // Dociągamy pełną aplikację bez zmiany URL, dzięki czemu router SPA
+    // obsłuży ładny adres produktu (/slug) bez przekierowania.
+    (function () {
+      var seg = location.pathname.replace(/\/+$/, '').split('/').pop();
+      var base = location.pathname.replace(/\/[^\/]*$/, '/') || '/';
+      if (seg === 'admin') { location.replace(base + '?admin=true'); return; }
+      if (seg === 'koszyk') { location.replace(base + '?view=koszyk'); return; }
+      fetch(base + 'index.html')
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (t) {
+          document.open();
+          document.write(t);
+          document.close();
+        })
+        .catch(function () { location.replace(base); });
+    })();
   </script>
 </head>
 <body>
-  <p>Przekierowywanie…</p>
+  <p>Ładowanie…</p>
 </body>
 </html>
