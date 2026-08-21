@@ -15,7 +15,6 @@
   <link rel="preconnect" href="https://cdn.tailwindcss.com" />
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" />
-  <link rel="preconnect" href="https://maslo-3d-default-rtdb.europe-west1.firebasedatabase.app" crossorigin />
 
   <!-- Kleje animacji (Faza 7/8): anime.js + konfetti -->
   <script src="https://cdn.jsdelivr.net/npm/animejs@3.2.2/lib/anime.min.js"></script>
@@ -78,13 +77,8 @@
         radial-gradient(1100px 520px at 85% -10%, rgba(0, 148, 115, 0.13), transparent 60%),
         radial-gradient(900px 480px at -15% 35%, rgba(56, 189, 248, 0.07), transparent 55%);
     }
-    html.light body::before,
-    html.highcontrast body::before { display: none; }
-
     /* Delikatna głębia paneli (światło od góry). */
     [class*="bg-panel"] { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
-    html.light [class*="bg-panel"],
-    html.highcontrast [class*="bg-panel"] { box-shadow: none; }
 
     /* Formularze: wyraźny focus ring w kolorze akcentu. */
     input:focus, select:focus, textarea:focus {
@@ -166,7 +160,7 @@
     }
     #app-nav .nav-item:hover { color: #e2e8f0; }
     #app-nav .nav-item.active {
-      color: var(--m-accent, #38bdf8);
+      color: var(--m-accent, #009473);
       background: rgba(255, 255, 255, 0.06);
     }
     /* Kontrolka koszyka z hover-podglądem (desktop) */
@@ -176,7 +170,7 @@
       right: 0;
       top: calc(100% + 10px);
       width: 300px;
-      background: #141a28;
+      background: var(--m-panel-solid, #121826);
       border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 1.1rem;
       box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
@@ -190,7 +184,7 @@
       right: 18px;
       width: 12px;
       height: 12px;
-      background: #141a28;
+      background: var(--m-panel-solid, #121826);
       border-top: 1px solid rgba(255, 255, 255, 0.12);
       border-left: 1px solid rgba(255, 255, 255, 0.12);
       transform: rotate(45deg);
@@ -201,8 +195,7 @@
     }
   </style>
 
-  <!-- Motywy: kolor akcentu + tryb (ciemny / wysoki kontrast / jasny).
-       Nadbija statyczny kolor akcentu Tailwinda zmiennymi CSS (W12). -->
+  <!-- Motyw: ciemny, kolor akcentu nadbija Tailwinda zmiennymi CSS. -->
   <style>
     html {
       --m-accent: #009473;       /* wiodący kolor strony */
@@ -215,27 +208,10 @@
       --m-border: rgba(255, 255, 255, 0.10);
       --m-border-strong: rgba(255, 255, 255, 0.35);
     }
-    /* Tryb jasny */
-    html.light {
-      --m-base: #eef2f7;
-      --m-panel-solid: #ffffff;
-      --m-text: #1e293b;
-      --m-text2: #475569;
-      --m-text3: #64748b;
-      --m-head: #0f172a;
-      --m-border: rgba(15, 23, 42, 0.12);
-      --m-border-strong: rgba(15, 23, 42, 0.30);
-    }
-    /* Tryb wysokiego kontrastu: lite panele + mocne obramowania */
-    html.highcontrast {
-      --m-panel-solid: #0c111c;
-      --m-border: var(--m-border-strong);
-    }
 
     body { background-color: var(--m-base); color: var(--m-text); }
-    html.light body, html.highcontrast body { background-color: var(--m-base); }
 
-    /* Akcent — dynamiczny (W12) */
+    /* Akcent */
     .text-accent                         { color: var(--m-accent) !important; }
     .bg-accent                           { background-color: var(--m-accent) !important; }
     .border-accent                       { border-color: var(--m-accent) !important; }
@@ -245,37 +221,21 @@
     .hover\:bg-accent:hover              { background-color: var(--m-accent) !important; }
     .shadow-accent\/20                   { --tw-shadow-color: var(--m-accent); }
 
-    /* Spójne bazowe/tekstowe dla jasnego i kontrastowego trybu */
-    html.light .text-white               { color: var(--m-head) !important; }
-    html.light .text-slate-200           { color: #1e293b !important; }
-    html.light .text-slate-300           { color: #334155 !important; }
-    html.light .text-slate-400           { color: var(--m-text2) !important; }
-    html.light .text-slate-500           { color: var(--m-text2) !important; }
-    html.light .text-slate-600           { color: var(--m-text3) !important; }
+    /* Hover w kolorze akcentu: rozjaśnienie zamiast drugiego koloru (spójność palety). */
+    .bg-accent { transition: filter .15s ease; }
+    .bg-accent:hover { filter: brightness(1.12); }
+    a.text-accent:hover, button.text-accent:hover { filter: brightness(1.25); }
 
-    /* Panele w jasnym / kontrastowym trybie — lite, bez translucencji */
-    html.light [class*="bg-panel"],
-    html.highcontrast [class*="bg-panel"] {
-      background: var(--m-panel-solid);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
+    /* Przycisk gwizdka w odcieniu akcentu. */
+    .whistle-btn {
+      color: var(--m-accent);
+      background: color-mix(in srgb, var(--m-accent) 10%, transparent);
+      border: 1px solid color-mix(in srgb, var(--m-accent) 30%, transparent);
+      transition: background-color .15s ease;
     }
-    html.light input[class*="bg-panel"], html.light select[class*="bg-panel"],
-    html.light textarea[class*="bg-panel"],
-    html.highcontrast input[class*="bg-panel"], html.highcontrast select[class*="bg-panel"],
-    html.highcontrast textarea[class*="bg-panel"] {
-      background: var(--m-panel-solid);
+    .whistle-btn:hover {
+      background: color-mix(in srgb, var(--m-accent) 20%, transparent);
     }
-    html.light header.backdrop-blur-xl,
-    html.highcontrast header.backdrop-blur-xl {
-      background-color: var(--m-base);
-      backdrop-filter: none;
-      -webkit-backdrop-filter: none;
-    }
-    html.highcontrast [class*="border-white\/10"],
-    html.highcontrast [class*="border-white\/5"] { border-color: var(--m-border-strong) !important; }
-    html.light .bg-base { background-color: var(--m-base); }
-    html.light .bg-base\/60, html.light .bg-base\/50, html.light .bg-base\/80 { background-color: rgba(238,242,247,0.85); }
   </style>
 
   <!-- Three.js (moduł ES) do generowania miniaturki z modelu 3D -->
@@ -377,6 +337,8 @@
       fetch('assets.json').then(function (resp) { return resp.json(); }).then(applyBg).catch(function (e) {
         console.error('Nie udało się załadować tła SVG:', e);
       });
+      // Jedyny egzemplarz dekodera Base122 (format kevinAlbs) — używany też przez assetsImg.
+      window.__decodeB122Ref = decodeB122;
     })();
   </script>
 
@@ -532,41 +494,12 @@
         .then(function (r) { if (!r.ok) throw new Error('assets.json ' + r.status); return r.json(); })
         .then(function (data) { __assets = data; return data; });
     }
-    // Dekoder Base122 w formacie kevinAlbs (assets.json: tła SVG + obrazy drukarek).
-    // Różni się od base122_decode (własny chunked) — assets.json koduje encodeAssets.mjs
-    // referencyjnym codec kevinAlbs. Identyczny z decodeB122 z nagłówka (bez trailing-push).
-    const B122_ILLEGALS = [0, 10, 13, 34, 38, 92]; // null, newline, CR, ", &, \
-    function base122DecodeRef(str) {
-      if (!str) return new Uint8Array(0);
-      const decoded = [];
-      let curByte = 0, bitOfByte = 0;
-      function push7(byte) {
-        byte <<= 1;
-        curByte |= (byte >>> bitOfByte);
-        bitOfByte += 7;
-        if (bitOfByte >= 8) {
-          decoded.push(curByte);
-          bitOfByte -= 8;
-          curByte = (byte << (7 - bitOfByte)) & 255;
-        }
-      }
-      for (let i = 0; i < str.length; i++) {
-        const c = str.charCodeAt(i);
-        if (c > 127) {
-          const illegalIndex = (c >>> 8) & 7;
-          if (illegalIndex !== 7) push7(B122_ILLEGALS[illegalIndex]);
-          push7(c & 127);
-        } else {
-          push7(c);
-        }
-      }
-      return new Uint8Array(decoded);
-    }
+    // Dekoder Base122 (format kevinAlbs) jest zdefiniowany raz — w IIFE tła (window.__decodeB122Ref).
     // Zwraca blob-URL obrazu z assets.json (img) dla danego klucza. MIME wg rozszerzenia źródła.
     function assetsImg(key) {
       if (!__assets || !__assets.img || !__assets.img[key]) return '';
       try {
-        var bytes = base122DecodeRef(__assets.img[key]);
+        var bytes = window.__decodeB122Ref(__assets.img[key]);
         return URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
       } catch (e) { return ''; }
     }
@@ -638,7 +571,6 @@
     let checkoutDeliveryDetail = '';
 
     // --- Preferencje użytkownika (localStorage) ---
-    const THEME_KEY = 'maslo3d_theme';
     // Lista porównania (max 3 produkty)
     const COMPARE_MAX = 3;
     let compareIds = [];
@@ -676,16 +608,7 @@
     // Filtr sklepu (stan przetrwa re-render)
     let shopQuery = '';
     let shopSort = 'name'; // name | time | weight | stock
-    // Motyw: zawsze ciemny z wiodącym kolorem #009473.
-    function applyTheme() {
-      var html = document.documentElement;
-      html.classList.remove('dark', 'light', 'highcontrast');
-      html.classList.add('dark');
-      try { localStorage.setItem(THEME_KEY, 'dark'); } catch (e) {}
-    }
-    function loadThemePrefs() {
-      applyTheme();
-    }
+    // Motyw: zawsze ciemny (klasa dark na <html> w markupie), akcent #009473.
 
     // Drukarki pokazywane na stronie głównej nad ofertami.
     // Konfiguracja: name = nazwa, imgKey = klucz obrazu w assets.json (img),
@@ -767,7 +690,7 @@
         var v = getComputedStyle(document.documentElement).getPropertyValue('--m-accent').trim();
         if (v) return v;
       } catch (e) {}
-      return '#38bdf8';
+      return '#009473';
     }
     function prefersReducedMotion() {
       return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -937,7 +860,7 @@
     }
     function saveCart() {
       try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch (e) { /* quota exceeded */ }
-      updateCartBadge();
+      updateCartCount();
     }
 
     /* --- Podsumowanie koszyka: ilość sztuk --- */
@@ -1054,13 +977,6 @@
       ensureAudio();
       loadSounds();
       if (typeof syncPrinterNoise === 'function') syncPrinterNoise();
-    }
-    // Dźwięki tylko na stronie głównej (brak ?o/?orderId/?p/?admin/&view=checkout)
-    function isShopView() {
-      var p = new URLSearchParams(window.location.search);
-      if (/\/admin\/?$/.test(window.location.pathname)) return false;
-      if (/\/koszyk\/?$/.test(window.location.pathname)) return false;
-      return !p.get('o') && !p.get('orderId') && !p.get('p') && p.get('admin') !== 'true' && p.get('view') !== 'checkout' && p.get('view') !== 'koszyk';
     }
     function playClickSound() {
       if (!audioCtx || !dingBuffer) return;
@@ -1202,15 +1118,14 @@
       const productId = params.get('p');
       const isAdmin = params.get('admin') === 'true' || /\/admin\/?$/.test(window.location.pathname);
       const isKoszyk = params.get('view') === 'koszyk' || /\/koszyk\/?$/.test(window.location.pathname);
-      const view = params.get('view');
 
       // Wyczyść tracking listener przy zmianie widoku
       if (trackingUnsub) { trackingUnsub(); trackingUnsub = null; }
 
       document.querySelectorAll('[data-view]').forEach(function (el) { el.classList.add('hidden'); });
 
-      // Koszyk widoczny poza panelem admina, widokiem checkout i śledzeniem paczki
-      setCartVisible(!isAdmin && !isKoszyk && view !== 'checkout' && !code && !orderId);
+      // Koszyk widoczny poza panelem admina i śledzeniem paczki
+      setCartVisible(!isAdmin && !isKoszyk && !code && !orderId);
 
       if (code || orderId) {
         document.getElementById('view-tracking').classList.remove('hidden');
@@ -1257,7 +1172,6 @@
     // Domyślnie otwieramy koszyk od kroku 1 (zawartość), a nie od razu "Dane".
     function goCheckout(step) {
       cartStep = step || 1;
-      closeCart();
       navigate(basePath() + '?view=koszyk');
     }
     function backToCart() {
@@ -1444,9 +1358,9 @@
           '</div>' +
           '<div class="mt-auto flex items-center justify-between">' +
             (settings.whistle && p.whistleEnabled !== false && p.whistleFreq
-              ? '<button type="button" data-whistle="' + id + '" class="text-xs text-sky-400 bg-sky-500/10 border border-sky-500/30 rounded-full px-2.5 py-1 hover:bg-sky-500/20 transition">Odtwórz</button>'
+              ? '<button type="button" data-whistle="' + id + '" class="text-xs whistle-btn rounded-full px-2.5 py-1">Odtwórz</button>'
               : '<span></span>') +
-            '<button type="button" data-add-cart="' + id + '" class="text-xs px-3 py-1.5 rounded-full bg-accent hover:bg-sky-400 text-slate-900 font-semibold transition">Do koszyka</button>' +
+            '<button type="button" data-add-cart="' + id + '" class="text-xs px-3 py-1.5 rounded-full bg-accent text-slate-900 font-semibold transition">Do koszyka</button>' +
           '</div>' +
         '</div>';
       return card;
@@ -1527,7 +1441,7 @@
           box.innerHTML = '<div class="text-center py-16"><div class="inline-block w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin mb-3"></div><p class="text-slate-400 text-lg">Ładowanie…</p></div>';
           return;
         }
-        box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent hover:text-sky-300 text-sm mt-4 inline-block">&larr; Wróć do sklepu</a></div>';
+        box.innerHTML = '<div class="text-center py-16"><p class="text-slate-400 text-lg">Produkt nie znaleziony.</p><a href="?" class="text-accent text-sm mt-4 inline-block">&larr; Wróć do sklepu</a></div>';
         return;
       }
 
@@ -1576,13 +1490,13 @@
           ? '      <span class="text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-3 py-1 text-sm font-bold">Brak w magazynie</span>'
           : (p.stock != null ? '      <span class="text-emerald-300 bg-emerald-400/10 border border-emerald-400/30 rounded-full px-3 py-1 text-sm">Stan: ' + p.stock + '</span>' : '')) +
         '    </div>' +
-        (isWhistle ? '<button id="pd-whistle" class="mt-4 px-4 py-2 rounded-xl bg-sky-500/20 text-sky-400 text-sm border border-sky-500/30 hover:bg-sky-500/30 transition w-fit">Odtwórz (' + whistleLabel + ')</button>' : '') +
+        (isWhistle ? '<button id="pd-whistle" class="whistle-btn mt-4 px-4 py-2 rounded-xl text-sm w-fit">Odtwórz (' + whistleLabel + ')</button>' : '') +
         (p.modelFile && p.modelFile.data ? '<button id="pd-download" data-download-model="' + productId + '" class="mt-2 px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-400 text-sm border border-emerald-500/30 hover:bg-emerald-500/30 transition w-fit inline-block text-center">Pobierz plik 3D (' + esc(p.modelFile.name) + ')</button>' : '') +
         (p.authorLink ? '<a href="' + esc(p.authorLink) + '" target="_blank" rel="noopener" class="mt-2 px-4 py-2 rounded-xl bg-violet-500/20 text-violet-400 text-sm border border-violet-500/30 hover:bg-violet-500/30 transition w-fit inline-block text-center">Model autora &nearr;</a>' : '') +
         '    <div class="mt-6 pt-6 border-t border-white/10">' +
         (outOfStock
           ? '      <p class="text-red-400 text-sm">Produkt chwilowo niedostępny.</p>'
-          : '      <button id="pd-add-cart" class="w-full py-3 rounded-xl font-bold text-base bg-accent hover:bg-sky-400 text-slate-900 shadow-lg shadow-accent/20 transition-all">Dodaj do koszyka</button>') +
+          : '      <button id="pd-add-cart" class="w-full py-3 rounded-xl font-bold text-base bg-accent text-slate-900 shadow-lg shadow-accent/20 transition-all">Dodaj do koszyka</button>') +
         '    </div>' +
         '  </div>' +
         '</div>';
@@ -1675,11 +1589,15 @@
       }
     }
 
-    // Ładuje animowany GIF preview z chunków -> data URL (Blob). Zwraca '' gdy brak.
+    // Ładuje animowany GIF preview z chunków -> blob URL. Zwraca '' gdy brak/błąd.
+    // Cache: {url, size} — unieważniany, gdy produkt dostanie nową animację (inny rozmiar).
     let __previewCache = {};
     function loadPreviewGif(productId) {
       if (!productId || !products[productId] || !products[productId].preview) return Promise.resolve('');
-      if (__previewCache[productId]) return Promise.resolve(__previewCache[productId]);
+      var meta = products[productId].preview;
+      var cached = __previewCache[productId];
+      if (cached && cached.size === (meta.size || 0)) return Promise.resolve(cached.url);
+      if (cached) { try { URL.revokeObjectURL(cached.url); } catch (e) {} delete __previewCache[productId]; }
       return db.collection('products').doc(productId).collection('preview').orderBy('index').get()
         .then(function (snap) {
           var total = 0, parts = [];
@@ -1695,7 +1613,7 @@
             var bin = base122ToBinary(out);
             var blob = new Blob([bin], { type: 'image/gif' });
             var url = URL.createObjectURL(blob);
-            __previewCache[productId] = url;
+            __previewCache[productId] = { url: url, size: meta.size || 0 };
             return url;
           } catch (e) { return ''; }
         })
@@ -1704,10 +1622,12 @@
 
     // HTML obrazka produktu (z fallbackiem, gdy brak zdjęcia)
     function productImageHtml(id, p) {
-      // Animowany preview (jeśli dostępny) — renderuje przez osobny loader data-preview
+      // Animowany preview (jeśli dostępny) — renderuje przez osobny loader data-preview.
+      // data-fallback = statyczna miniaturka na wypadek nieudanego ładowania GIF-a.
       if (p.preview) {
+        var fb = imageSrcFor(p.imageUrl || p.image);
         return '<div class="aspect-square w-full overflow-hidden bg-black/40">' +
-          '<img data-preview="' + esc(id) + '" data-src="" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" decoding="async" />' +
+          '<img data-preview="' + esc(id) + '"' + (fb ? ' data-fallback="' + esc(fb) + '"' : '') + ' data-src="" alt="' + esc(p.name) + '" class="w-full h-full object-contain" loading="lazy" decoding="async" />' +
           '</div>';
       }
       var img = imageSrcFor(p.imageUrl || p.image);
@@ -1728,7 +1648,10 @@
     function hydrateImage(img) {
       if (img.dataset.preview) {
         loadPreviewGif(img.dataset.preview).then(function (url) {
-          if (url && img) { img.src = url; img.removeAttribute('data-src'); }
+          if (!img) return;
+          if (url) { img.src = url; }
+          else if (img.dataset.fallback) { img.src = img.dataset.fallback; } // GIF padł -> statyczna miniaturka
+          img.removeAttribute('data-src');
         });
         return;
       }
@@ -1762,7 +1685,6 @@
       // Klik w koszyk zawsze prowadzi bezpośrednio na stronę /koszyk
       goCheckout();
     }
-    function closeCart() {}
     // Hover-podgląd koszyka przy ikonie (desktop)
     function renderCartPreview() {
       var prev = document.getElementById('cart-preview');
@@ -1787,11 +1709,11 @@
         html +=
           '<div class="flex gap-3 items-center py-1.5">' +
           '<span class="w-10 h-10 rounded-lg overflow-hidden bg-white/5 shrink-0 grid place-items-center border border-white/10">' +
-          (imgSrc ? '<img src="' + esc(imgSrc) + '" alt="" class="w-full h-full object-cover">' : '<span class="text-xs text-slate-500">' + esc(p.price) + '</span>') +
+          (imgSrc ? '<img src="' + esc(imgSrc) + '" alt="" class="w-full h-full object-cover">' : '<span class="text-xs text-slate-500">' + esc(p.name.charAt(0)) + '</span>') +
           '</span>' +
           '<div class="min-w-0 flex-1">' +
           '<div class="text-sm font-medium text-slate-100 truncate">' + esc(p.name) + '</div>' +
-          (p.price ? '<div class="text-xs text-slate-500">' + esc(p.price) + ' zł</div>' : '') +
+          '<div class="text-xs text-slate-500">' + fmtTimeMini(p.printTimeSec) + '</div>' +
           '</div>' +
           '<span class="text-xs text-slate-400">&#215;' + cart[id] + '</span>' +
           '</div>';
@@ -1924,7 +1846,7 @@
       var ids = Object.keys(cart).filter(function (id) { return products[id] && cart[id] > 0; });
       container.innerHTML =
         '<button id="cart-next" ' + (ids.length === 0 ? 'disabled' : '') +
-        ' class="w-full mt-2 py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Dalej &rarr;</button>';
+        ' class="w-full mt-2 py-3 rounded-xl font-bold bg-accent text-slate-900 transition-all disabled:opacity-40 disabled:cursor-not-allowed">Dalej &rarr;</button>';
       var btn = container.querySelector('#cart-next');
       if (btn) btn.addEventListener('click', function () {
         if (cartSummary().count === 0) { flash('Koszyk jest pusty'); return; }
@@ -1932,14 +1854,10 @@
       });
     }
 
-    function updateCartBadge() {
-      if (updateCartCount) updateCartCount();
-    }
-
     function renderCheckoutFooter(container, label, action) {
       container.innerHTML =
         '<button id="cart-submit-order"' +
-        ' class="w-full py-3 rounded-xl font-bold bg-accent hover:bg-sky-400 text-slate-900 transition-all">' + label + '</button>';
+        ' class="w-full py-3 rounded-xl font-bold bg-accent text-slate-900 transition-all">' + label + '</button>';
       var btn = container.querySelector('#cart-submit-order');
       if (btn) btn.addEventListener('click', action);
     }
@@ -2048,7 +1966,7 @@
         '      <p class="text-white font-medium">' + esc(q.estimate) + '</p>' +
         '    </div>' +
         '  </div>' +
-        '  <a href="' + esc(link) + '" class="mt-5 inline-block text-accent hover:text-sky-300 font-semibold text-sm">Śledź zamówienie &rarr;</a>' +
+        '  <a href="' + esc(link) + '" class="mt-5 inline-block text-accent font-semibold text-sm">Śledź zamówienie &rarr;</a>' +
         '</div>';
     }
 
@@ -2057,7 +1975,7 @@
         '<button id="cart-close-queue"' +
         ' class="w-full py-3 rounded-xl font-bold bg-white/10 hover:bg-white/15 text-white transition-all">Zamknij</button>';
       var cq = container.querySelector('#cart-close-queue');
-      if (cq) cq.addEventListener('click', closeCart);
+      if (cq) cq.addEventListener('click', function () { navigate(homeUrl()); });
     }
 
     // Złożenie zamówienia (krok 4 -> kolejka)
@@ -2067,11 +1985,7 @@
       var initial = checkoutInitial.trim().toUpperCase();
       var deliveryDetail = checkoutDeliveryDetail.trim();
       // Krok 4 nie renderuje pól formularza — komunikat pokazujemy w aktywnej powierzchni
-      var onCheckout = new URLSearchParams(window.location.search).get('view') === 'koszyk' || /\/koszyk\/?$/.test(window.location.pathname);
-      var activeContainers = document.getElementById('ck-body')
-        ? document.getElementById('ck-body')
-        : document.getElementById('ck-body');
-      var msg = activeContainers ? activeContainers.querySelector('#checkout-message') : null;
+      var msg = document.getElementById('checkout-message');
 
       if (!msg) msg = { innerHTML: '' }; // fallback, by nie psować dalszej logiki
 
@@ -2146,11 +2060,8 @@
       batch.set(db.collection('orders').doc(orderId), order);
       if (settings.mode === 'active') {
         items.forEach(function (it) {
-          var p = products[it.productId];
-          var decrement = Math.min(it.qty, p.stock || 0);
-          if (decrement > 0) {
-            batch.update(db.collection('products').doc(it.productId), { stock: (p.stock || 0) - decrement });
-          }
+          // Atomowy decrement — odporne na równoległe zamówienia.
+          batch.update(db.collection('products').doc(it.productId), { stock: firebase.firestore.FieldValue.increment(-it.qty) });
         });
       }
       batch.commit()
@@ -2160,7 +2071,7 @@
           markOrderPlaced();
           lastOrderData = { orderId: orderId, orderCode: orderCode, name: displayName, estPrintSec: estPrintSec };
           cartStep = 5;
-          if (onCheckout || document.getElementById('ck-body')) renderCartStep(); else renderCartStep();
+          renderCartStep();
           celebrateSuccess(); // Faza 7: konfetti + animacja sukcesu
         })
         .catch(function (err) {
@@ -2263,7 +2174,7 @@
             '  </div>' +
             '  <h2 class="text-xl font-bold text-white">Nie znaleziono zamówienia</h2>' +
             '  <p class="text-sm text-slate-400 mt-2">Nie ma zamówienia o podanym numerze w systemie. Sprawdź poprawność numeru i spróbuj ponownie.</p>' +
-            '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+            '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent font-semibold">Wróć do sklepu</a>' +
             '</div>';
           return;
         }
@@ -2277,7 +2188,7 @@
           '  </div>' +
           '  <h2 class="text-xl font-bold text-white">Zamówienie nie istnieje lub zostało anulowane przez administratora</h2>' +
           (reason ? '<p class="mt-3 text-sm text-slate-400 bg-red-400/10 border border-red-400/30 rounded-xl px-4 py-3">Powód anulowania: <span class="text-red-300 font-semibold">' + esc(reason) + '</span></p>' : '') +
-          '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+          '  <a href="' + pageUrl() + '" class="mt-6 inline-block text-accent font-semibold">Wróć do sklepu</a>' +
           '</div>';
         return;
       }
@@ -2351,7 +2262,7 @@
         '    <div class="flex w-full items-center">' + stepsHtml + '</div>' +
         '  </div>' +
         '  <div class="text-center mt-6">' +
-        '    <a href="' + pageUrl() + '" class="inline-block text-accent hover:text-sky-300 font-semibold">Wróć do sklepu</a>' +
+        '    <a href="' + pageUrl() + '" class="inline-block text-accent font-semibold">Wróć do sklepu</a>' +
         '  </div>' +
         '</div>';
     }
@@ -2567,7 +2478,7 @@
           '<td class="py-3 px-3">' +
           '  <div class="flex items-center gap-2">' +
           '    <input type="number" min="0" value="' + (p.stock || 0) + '" data-stock-id="' + id + '" class="w-20 bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center" />' +
-          '    <button data-save-stock="' + id + '" class="bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg">Zapisz</button>' +
+          '    <button data-save-stock="' + id + '" class="bg-accent text-slate-900 font-semibold text-sm px-3 py-1.5 rounded-lg">Zapisz</button>' +
           '  </div>' +
           '</td>' +
           '<td class="py-3 px-3">' +
@@ -2576,7 +2487,7 @@
             ? '<button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-xs px-2 py-1" title="' + esc(p.modelFile.name) + '">Plik</button>'
             : '') +
           '    <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-xs px-2 py-1">Edytuj</button>' +
-          '    <button data-preview-product="' + id + '" class="text-sky-400 hover:text-sky-300 text-xs px-2 py-1">Podgląd</button>' +
+          '    <button data-preview-product="' + id + '" class="text-accent text-xs px-2 py-1">Podgląd</button>' +
           '    <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-xs px-2 py-1">Usuń</button>' +
           '  </div>' +
           '</td>';
@@ -2625,7 +2536,84 @@
         });
       });
 
+      // Karty mobilne (md:hidden) — te same data-* co wiersze tabeli.
+      var cardsBox = document.getElementById('admin-products-cards');
+      if (cardsBox) {
+        cardsBox.innerHTML = '';
+        if (keys.length === 0) {
+          cardsBox.innerHTML = '<p class="text-center text-slate-500 py-6 text-sm">Brak produktów. Dodaj pierwszą ofertę.</p>';
+        } else {
+          keys.forEach(function (id) {
+            if (products[id]) cardsBox.appendChild(productCard(id, products[id]));
+          });
+        }
+        cardsBox.querySelectorAll('[data-save-stock]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var cid = btn.dataset.saveStock;
+            var input = cardsBox.querySelector('[data-stock-id="' + cid + '"]');
+            var val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 0) { alert('Podaj poprawny stan (0 lub więcej).'); return; }
+            db.collection('products').doc(cid).update({ stock: val })
+              .then(function () { flash('Stan magazynowy zaktualizowany.'); })
+              .catch(function (e2) { alert('Błąd: ' + e2.message); });
+          });
+        });
+        cardsBox.querySelectorAll('[data-del-product]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var did = btn.dataset.delProduct;
+            if (confirm('Na pewno usunąć ten produkt?')) {
+              db.collection('products').doc(did).delete()
+                .then(function () { flash('Produkt usunięty.'); })
+                .catch(function (e2) { alert('Błąd: ' + e2.message); });
+            }
+          });
+        });
+        cardsBox.querySelectorAll('[data-edit-product]').forEach(function (btn) {
+          btn.addEventListener('click', function () { loadProductIntoForm(btn.dataset.editProduct); });
+        });
+        cardsBox.querySelectorAll('[data-preview-product]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            window.open(pageUrl() + '?p=' + encodeURIComponent(btn.dataset.previewProduct), '_blank');
+          });
+        });
+        cardsBox.querySelectorAll('[data-download-model]').forEach(function (btn) {
+          btn.addEventListener('click', function () { downloadProductModel(btn.dataset.downloadModel); });
+        });
+      }
+
       populateBundleDropdown();
+    }
+
+    // Karta produktu (mobile) — te same data-* co wiersz tabeli.
+    function productCard(id, p) {
+      const card = document.createElement('div');
+      card.className = 'bg-panel border border-white/10 rounded-2xl p-4';
+      const imgHtml = ((p.imageUrl || p.image) && (p.imageUrl || p.image).length > 20)
+        ? '<img src="' + esc(imageSrcFor(p.imageUrl || p.image)) + '" class="w-full h-full object-cover" alt="" />'
+        : '<div class="w-full h-full flex items-center justify-center text-slate-600 text-xs">Brak</div>';
+      card.innerHTML =
+        '<div class="flex gap-3">' +
+        '  <div class="w-14 h-14 rounded-lg overflow-hidden bg-black/40 shrink-0">' + imgHtml + '</div>' +
+        '  <div class="min-w-0 flex-1">' +
+        '    <p class="font-semibold text-white truncate">' + esc(p.name) + '</p>' +
+        '    <p class="text-xs text-slate-400 mt-0.5">M: ' + fmtTime(p.printTimeSec) +
+        (p.printTimeSecBambus ? ' · B: ' + fmtTime(p.printTimeSecBambus) : '') +
+        (p.weight ? ' · ' + fmtGrams(p.weight) : '') + '</p>' +
+        '    <div class="flex items-center gap-2 mt-2">' +
+        '      <input type="number" min="0" value="' + (p.stock || 0) + '" data-stock-id="' + id + '" class="w-20 bg-base border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white text-center" />' +
+        '      <button data-save-stock="' + id + '" class="bg-accent text-slate-900 font-semibold text-xs px-3 py-1.5 rounded-lg">Zapisz</button>' +
+        '    </div>' +
+        '  </div>' +
+        '</div>' +
+        '<div class="flex items-center gap-3 flex-wrap mt-3 pt-3 border-t border-white/5">' +
+        (p.modelFile && p.modelFile.data
+          ? '<button data-download-model="' + id + '" class="text-emerald-400 hover:text-emerald-300 text-xs px-1 py-1" title="' + esc(p.modelFile.name) + '">Plik</button>'
+          : '') +
+        '  <button data-edit-product="' + id + '" class="text-slate-400 hover:text-accent text-xs px-1 py-1">Edytuj</button>' +
+        '  <button data-preview-product="' + id + '" class="text-accent text-xs px-1 py-1">Podgląd</button>' +
+        '  <button data-del-product="' + id + '" class="text-red-400 hover:text-red-300 text-xs px-1 py-1 ml-auto">Usuń</button>' +
+        '</div>';
+      return card;
     }
 
     function handleModelSelect(e) {
@@ -2696,6 +2684,32 @@
       if (hidden) hidden.value = JSON.stringify(productPhotos);
     }
 
+    // Kompresja zdjęcia do max 800px + JPEG (~100 KB) — chroni limit 1 MiB dokumentu.
+    function compressImageFile(file) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          try {
+            var MAX = 800;
+            var scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+            var w = Math.max(1, Math.round(img.naturalWidth * scale));
+            var h = Math.max(1, Math.round(img.naturalHeight * scale));
+            var cv = document.createElement('canvas');
+            cv.width = w; cv.height = h;
+            cv.getContext('2d').drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            resolve(cv.toDataURL('image/jpeg', 0.82));
+          } catch (er) {
+            URL.revokeObjectURL(url);
+            reject(er);
+          }
+        };
+        img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Nie można odczytać obrazu.')); };
+        img.src = url;
+      });
+    }
+
     function handlePhotosSelect(e) {
       var files = Array.prototype.slice.call(e.target.files);
       if (files.length === 0) return;
@@ -2704,14 +2718,14 @@
         if (!file.type || file.type.indexOf('image/') !== 0) { pending--; return; }
         var maxSizeMB = 8;
         if (file.size > maxSizeMB * 1024 * 1024) { pending--; alert(file.name + ' — za duży plik (max ' + maxSizeMB + ' MB).'); return; }
-        var reader = new FileReader();
-        reader.onload = function (ev) {
-          productPhotos.push(ev.target.result);
+        compressImageFile(file).then(function (dataUrl) {
+          productPhotos.push(dataUrl);
           pending--;
           if (pending === 0) { renderPhotoPreviews(); e.target.value = ''; }
-        };
-        reader.onerror = function () { pending--; };
-        reader.readAsDataURL(file);
+        }).catch(function () {
+          pending--;
+          if (pending === 0) { renderPhotoPreviews(); e.target.value = ''; }
+        });
       });
     }
 
@@ -2963,6 +2977,10 @@
         if (!name) { alert('Podaj nazwę produktu.'); return; }
         if (!editingProductId && !modelInput.files[0]) { alert('Dodaj plik 3D (STL) — jest wymagany.'); return; }
         if (!editingProductId && !imageDataUrl) { alert('Miniaturka się jeszcze generuje — poczekaj chwilę i zapisz ponownie.'); return; }
+        // Nowy model unieważnia istniejącą animację 360° — poinformuj i usuń ją przy zapisie.
+        if (newFile && editingProductId && products[editingProductId] && products[editingProductId].preview) {
+          if (!confirm('Wczytano nowy plik modelu — dotychczasowa animacja 360° jest nieaktualna i zostanie usunięta (możesz wygenerować nową). Kontynuować?')) return;
+        }
 
         var docData = {
           name: name, desc: desc, weight: weight,
@@ -3031,10 +3049,13 @@
             await new Promise(function (r) { setTimeout(r, 0); });
           }
           docData.preview = { totalChunks: pChunks.length, size: previewB122.length };
-        } else {
-          // Brak nowej animacji -> zachowaj istniejącą (nie kasuj przy zwykłej edycji).
-          var prevHasPreview = editingProductId && products[editingProductId] && products[editingProductId].preview;
-          if (!prevHasPreview && editingProductId) {
+        } else if (editingProductId) {
+          // Bez nowej animacji: zachowaj istniejącą, chyba że nowy model ją unieważnił
+          // (albo meta nie istnieje, a osierocone chunki wymagają sprzątnięcia).
+          var prev = products[editingProductId];
+          var prevHasPreview = !!(prev && prev.preview);
+          var stalePreview = prevHasPreview && !!newFile;
+          if (!prevHasPreview || stalePreview) {
             const pRef = db.collection('products').doc(id);
             const pCol = pRef.collection('preview');
             const pOldSnap = await pCol.orderBy('index').get();
@@ -3161,6 +3182,25 @@
         }
       }
 
+      // Karty mobilne (md:hidden) — te same dane i atrybuty data-* co tabela.
+      var cardsBox = document.getElementById('orders-cards');
+      if (cardsBox) {
+        cardsBox.innerHTML = '';
+        var visible = filt.mode === 'archived' ? [] : active.slice(0, adminOrderLimit);
+        var archivedCards = filt.mode === 'active' ? [] : archived;
+        if (visible.length === 0 && archivedCards.length === 0) {
+          cardsBox.innerHTML = '<p class="text-center text-slate-500 py-6 text-sm">Brak aktywnych zamówień.</p>';
+        }
+        visible.forEach(function (item) { cardsBox.appendChild(orderCard(item.id, item.o, false)); });
+        if (archivedCards.length > 0) {
+          var archHead = document.createElement('p');
+          archHead.className = 'text-xs uppercase tracking-wide text-slate-500 font-bold pt-4';
+          archHead.textContent = 'Archiwum (anulowane / usunięte)';
+          cardsBox.appendChild(archHead);
+          archivedCards.forEach(function (item) { cardsBox.appendChild(orderCard(item.id, item.o, true)); });
+        }
+      }
+
       if (archived.length > 0) {
         tbody.innerHTML +=
           '<tr class="border-t border-white/10"><td colspan="10" class="pt-6 pb-2">' +
@@ -3217,7 +3257,7 @@
           : '<input data-estimate-id="' + id + '" type="text" value="' + esc(o.deliveryEstimate || '') + '" placeholder="np. jutro 14:00" class="bg-panel border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white w-32 focus:border-accent focus:outline-none" />') +
         '</td>' +
         '<td class="py-3 px-3">' +
-        '  <button data-copy-link="' + id + '" title="Kopiuj link śledzenia" class="text-accent hover:text-sky-300 text-sm px-2 py-1">Kopiuj link</button>' +
+        '  <button data-copy-link="' + id + '" title="Kopiuj link śledzenia" class="text-accent text-sm px-2 py-1">Kopiuj link</button>' +
         '</td>' +
         '<td class="py-3 px-3">' +
         (isArchived
@@ -3226,6 +3266,52 @@
         '</td>';
 
       return tr;
+    }
+
+    // Karta zamówienia (mobile) — te same data-* co wiersz tabeli, więc delegacja działa tak samo.
+    function orderCard(id, o, isArchived) {
+      const card = document.createElement('div');
+      card.className = 'bg-panel border border-white/10 rounded-2xl p-4 space-y-3';
+
+      const statusOptions = STATUSES.map(function (s) {
+        return '<option value="' + s + '"' + (o.status === s ? ' selected' : '') + '>' + s + '</option>';
+      }).join('');
+      const printerOptions = Object.keys(PRINTERS).filter(function (k) { return PRINTERS[k].enabled; }).map(function (k) {
+        return '<option value="' + k + '"' + (o.printer === k ? ' selected' : '') + '>' + esc(PRINTERS[k].name) + '</option>';
+      }).join('');
+      const itemsText = (o.items || []).map(function (it) { return esc(it.productName) + ' x' + it.qty; }).join(', ') || '—';
+      const timeSec = orderPrintSec(o);
+
+      card.innerHTML =
+        '<div class="flex items-center justify-between gap-2">' +
+        '  <span class="text-xs font-mono text-slate-400">' + esc(shortId(id)) + '</span>' +
+        '  <span class="text-xs text-slate-500">' + fmtDate(o.createdAt) + '</span>' +
+        '</div>' +
+        '<div class="flex items-center justify-between gap-2">' +
+        '  <p class="font-medium text-white">' + esc(o.name) + '</p>' +
+        (isArchived
+          ? '<span class="text-xs text-red-300 bg-red-400/10 border border-red-400/30 rounded-full px-2 py-1 shrink-0">Anulowane</span>'
+          : '<span class="text-xs font-bold ' + statusColor(o.status).split(' ')[0] + ' shrink-0">' + esc(o.status) + '</span>') +
+        '</div>' +
+        '<p class="text-sm text-slate-300">' + itemsText + '</p>' +
+        '<p class="text-xs text-slate-400">' + (timeSec ? fmtTime(timeSec) : fmtGrams(o.totalWeight)) + ' · ' + fmtGrams(o.totalWeight) + '</p>' +
+        (isArchived
+          ? (o.deleteReason ? '<p class="text-xs text-slate-500">' + esc(o.deleteReason) + '</p>' : '')
+          : '<div class="grid grid-cols-2 gap-2">' +
+            '  <select data-status-id="' + id + '" class="bg-base border border-white/10 rounded-lg px-2 py-2 text-sm text-white text-center">' + statusOptions + '</select>' +
+            '  <select data-printer-id="' + id + '" class="bg-base border border-white/10 rounded-lg px-2 py-2 text-sm text-white text-center">' +
+            '    <option value=""' + (!o.printer ? ' selected' : '') + '>Drukarka: —</option>' + printerOptions +
+            '  </select>' +
+            '</div>' +
+            '<div class="flex items-center gap-2">' +
+            '  <input data-estimate-id="' + id + '" type="text" value="' + esc(o.deliveryEstimate || '') + '" placeholder="Szac. dostawa, np. jutro 14:00" class="flex-1 bg-base border border-white/10 rounded-lg px-2 py-2 text-sm text-white focus:border-accent focus:outline-none" />' +
+            '</div>') +
+        '<div class="flex items-center gap-3 pt-1">' +
+        '  <button data-copy-link="' + id + '" class="text-accent text-sm px-1 py-1">Kopiuj link</button>' +
+        (isArchived ? '' : '<button data-cancel="' + id + '" class="text-red-400 hover:text-red-300 text-sm px-1 py-1">Anuluj i usuń</button>') +
+        '</div>';
+
+      return card;
     }
 
     /* --- Modal anulowania --- */
@@ -3442,11 +3528,6 @@
        ------------------------------------------------------------------ */
     /* --- Event delegation (jednorazowa instalacja) --- */
     function setupEventDelegation() {
-      // Panel admina: ukryte przejście przez czystą ścieżkę /admin (SPA, bez przeładowania)
-      document.addEventListener('click', function (e) {
-        var al = e.target.closest('[data-admin-link]');
-        if (al) { e.preventDefault(); navigate(adminUrl()); }
-      });
       // Sklep: koszyk, gwizdek, pobieranie pliku, porównanie
       var grid = document.getElementById('shop-grid');
       if (grid) grid.addEventListener('click', function (e) {
@@ -3518,10 +3599,11 @@
       });
       });
 
-      // Tabela zamówień admina: status, szacunek, anulowanie, link
-      var ordersTbody = document.getElementById('orders-tbody');
-      if (ordersTbody) {
-        ordersTbody.addEventListener('change', function (e) {
+      // Tabela + karty zamówień admina: status, szacunek, anulowanie, link
+      var estimateTimers = {};
+      function bindOrdersHandlers(root) {
+        if (!root) return;
+        root.addEventListener('change', function (e) {
           var sel;
           sel = e.target.closest('[data-status-id]');
           if (sel) {
@@ -3540,8 +3622,7 @@
             return;
           }
         });
-        var estimateTimers = {};
-        ordersTbody.addEventListener('input', function (e) {
+        root.addEventListener('input', function (e) {
           var inp = e.target.closest('[data-estimate-id]');
           if (inp) {
             var eid = inp.dataset.estimateId;
@@ -3554,7 +3635,7 @@
             return;
           }
         });
-        ordersTbody.addEventListener('click', function (e) {
+        root.addEventListener('click', function (e) {
           var btn;
           btn = e.target.closest('[data-cancel]');
           if (btn) { openCancelModal(btn.dataset.cancel); return; }
@@ -3566,6 +3647,8 @@
           }
         });
       }
+      bindOrdersHandlers(document.getElementById('orders-tbody'));
+      bindOrdersHandlers(document.getElementById('orders-cards'));
 
       // Stepper koszyka: powrót do wcześniejszego (ukończonego) kroku
       document.addEventListener('click', function (e) {
@@ -3600,9 +3683,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-      loadThemePrefs();
       loadCart();
-      updateCartBadge();
       startListeners();
       setupEventDelegation();
       initAppNav(); // Jednolity górny pasek
@@ -3732,7 +3813,7 @@
         <div class="bg-panel border border-white/10 rounded-2xl p-4 mb-6">
           <div class="flex flex-col lg:flex-row gap-3">
             <div class="flex-1">
-              <input id="shop-search" type="text" placeholder="Szukaj po nazwie lub tagach..." value=""
+              <input id="shop-search" type="text" placeholder="Szukaj po nazwie..." value=""
                 class="w-full bg-base border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:border-accent focus:outline-none" />
             </div>
             <div>
@@ -3765,7 +3846,7 @@
           <p id="track-lookup-error" class="text-sm text-red-300"></p>
           <div class="flex gap-3">
             <button type="submit"
-              class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Otwórz</button>
+              class="flex-1 py-2.5 rounded-xl font-semibold bg-accent text-slate-900 transition-all">Otwórz</button>
             <button type="button" id="track-lookup-close"
               class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Anuluj</button>
           </div>
@@ -3826,7 +3907,7 @@
               </div>
               <p id="admin-login-error" class="text-sm text-red-300"></p>
               <button id="admin-login-btn" type="submit"
-                class="w-full py-3 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all shadow-lg shadow-accent/20">Zaloguj</button>
+                class="w-full py-3 rounded-xl font-semibold bg-accent text-slate-900 transition-all shadow-lg shadow-accent/20">Zaloguj</button>
             </form>
             <a href="." class="mt-4 block text-center text-sm text-slate-500 hover:text-accent transition-colors">Wróć do sklepu</a>
           </div>
@@ -3838,11 +3919,11 @@
 
   <!-- ================= WIDOK 3: PANEL ADMINA ================= -->
   <div id="view-admin" data-view class="hidden">
-    <div class="max-w-7xl mx-auto px-4 py-6 lg:py-8 flex flex-col lg:flex-row gap-6">
+    <div class="max-w-7xl mx-auto px-4 py-6 lg:py-8">
 
-      <!-- BOCZNE MENU PANELU -->
-      <nav class="lg:w-56 shrink-0">
-        <div class="bg-panel border border-white/10 rounded-2xl p-3 flex lg:flex-col gap-1 overflow-x-auto">
+      <!-- ZAKŁADKI PANELU (poziome, pod główną nawigacją) -->
+      <nav aria-label="Panel administratora" class="mb-6">
+        <div class="bg-panel border border-white/10 rounded-2xl p-2 flex gap-1 overflow-x-auto">
           <button type="button" class="admin-tab flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all" data-admin-tab="products">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2zm0 5h14M5 15h14M8 7v5M16 12v5" /></svg>
             Produkty
@@ -3867,7 +3948,7 @@
       </nav>
 
       <!-- ZAWARTOŚĆ PANELU -->
-      <div class="flex-1 min-w-0">
+      <div class="min-w-0">
 
         <!-- USTAWIENIA -->
         <section id="adm-settings" class="admin-sec hidden">
@@ -3889,7 +3970,7 @@
               </div>
               <div class="lg:col-span-3 flex items-end">
                 <button type="submit"
-                  class="px-6 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz ustawienia</button>
+                  class="px-6 py-2.5 rounded-xl font-semibold bg-accent text-slate-900 transition-all">Zapisz ustawienia</button>
               </div>
               <div class="lg:col-span-3">
                 <label class="flex items-center gap-2 cursor-pointer">
@@ -3903,7 +3984,7 @@
 
         <!-- PRODUKTY -->
       <section id="adm-products" class="admin-sec">
-      <div class="grid lg:grid-cols-2 gap-8">
+      <div class="space-y-8">
         <!-- Formularz dodawania/edycji -->
         <div id="admin-form" class="bg-panel border border-white/10 rounded-2xl p-6">
           <h3 id="admin-form-title" class="text-lg font-bold text-white mb-4">Dodaj nowy produkt</h3>
@@ -4115,7 +4196,7 @@
             <div id="admin-form-error" class="hidden text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-2.5 mb-2"></div>
             <div class="flex gap-3 pt-1">
               <button type="submit" id="admin-form-submit"
-                class="flex-1 py-2.5 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 transition-all">Zapisz produkt</button>
+                class="flex-1 py-2.5 rounded-xl font-semibold bg-accent text-slate-900 transition-all">Zapisz produkt</button>
               <button type="button" id="admin-form-reset" onclick="resetProductForm()"
                 class="px-4 py-2.5 rounded-xl font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Wyczyść</button>
             </div>
@@ -4126,9 +4207,9 @@
         <div class="bg-panel border border-white/10 rounded-2xl p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-white">Produkty w sklepie</h3>
-            <button type="button" id="admin-product-add" class="px-4 py-2 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 text-sm transition-all">+ Dodaj</button>
+            <button type="button" id="admin-product-add" class="px-4 py-2 rounded-xl font-semibold bg-accent text-slate-900 text-sm transition-all">+ Dodaj</button>
           </div>
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto hidden md:block">
             <table class="w-full text-left text-sm border-collapse min-w-[760px]">
               <thead>
                 <tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">
@@ -4143,6 +4224,8 @@
               <tbody id="admin-products"></tbody>
             </table>
           </div>
+          <!-- Karty produktów (mobile) -->
+          <div id="admin-products-cards" class="md:hidden space-y-3"></div>
         </div>
       </div>
       </section>
@@ -4152,7 +4235,7 @@
         <div class="bg-panel border border-white/10 rounded-2xl p-6">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-white">Zbiorcza edycja stanów</h3>
-            <button id="bulk-stock-save" class="px-4 py-2 rounded-xl font-semibold bg-accent hover:bg-sky-400 text-slate-900 text-sm transition-all">Zapisz wszystkie</button>
+            <button id="bulk-stock-save" class="px-4 py-2 rounded-xl font-semibold bg-accent text-slate-900 text-sm transition-all">Zapisz wszystkie</button>
           </div>
           <div id="bulk-stock-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
         </div>
@@ -4180,7 +4263,7 @@
               <option value="">Wszystkie drukarki</option>
             </select>
           </div>
-          <div class="overflow-x-auto">
+          <div class="overflow-x-auto hidden md:block">
           <table class="w-full text-left text-sm border-collapse min-w-[1020px]">
             <thead>
               <tr class="text-slate-500 text-xs uppercase tracking-wide border-b border-white/10">
@@ -4199,6 +4282,8 @@
             <tbody id="orders-tbody"></tbody>
           </table>
           </div>
+          <!-- Karty zamówień (mobile) -->
+          <div id="orders-cards" class="md:hidden space-y-3"></div>
         </div>
       </section>
 
@@ -4803,10 +4888,10 @@
   </div>
 
   <!-- ============ PORÓWNYWARKA (pływający pasek) ============ -->
-  <div id="compare-fab" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-panel border border-white/10 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3 flex-wrap justify-center wiggle">
+  <div id="compare-fab" class="hidden fixed bottom-5 left-1/2 -translate-x-1/2 z-40 bg-panel border border-white/10 rounded-2xl px-4 py-3 shadow-2xl flex items-center gap-3 flex-wrap justify-center">
     <span class="text-xs text-slate-400 shrink-0">Porównanie (<span id="compare-count">0</span>/3):</span>
     <span id="compare-items" class="flex flex-wrap gap-1.5 shrink-0"></span>
-    <button id="compare-open" class="shrink-0 px-3 py-1.5 rounded-lg bg-accent hover:bg-sky-400 text-slate-900 font-semibold text-sm">Porównaj</button>
+    <button id="compare-open" class="shrink-0 px-3 py-1.5 rounded-lg bg-accent text-slate-900 font-semibold text-sm">Porównaj</button>
     <button id="compare-clear" class="shrink-0 px-2 py-1.5 rounded-lg bg-base border border-white/10 text-slate-400 hover:text-red-300 text-sm">Wyczyść</button>
   </div>
 

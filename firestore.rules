@@ -9,6 +9,13 @@ service cloud.firestore {
     }
     match /products/{productId} {
       allow read, write: if true;
+      // Subkolekcje: chunki pliku 3D (model) i animacji 360 (preview).
+      match /model/{chunkId} {
+        allow read, write: if true;
+      }
+      match /preview/{chunkId} {
+        allow read, write: if true;
+      }
     }
     match /settings/{settingId} {
       allow read, write: if true;
