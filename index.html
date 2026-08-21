@@ -956,47 +956,13 @@
       } catch (e) {}
     }
 
-    /* --- Dźwięki strony: dzwonek przycisków (100%) + dzwonek pisania --- */
-    var audioCtx = null, dingBuffer = null, clickSrc = null;
-    var audioUnlocked = false, lastTypeSound = 0;
-    function ensureAudio() {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-    }
-    function loadSounds() {
-      if (!audioCtx || dingBuffer) return;
-      fetch('click.mp3').then(function (r) { if (!r.ok) throw new Error('click.mp3 ' + r.status); return r.arrayBuffer(); })
-        .then(function (buf) { return audioCtx.decodeAudioData(buf); })
-        .then(function (decoded) { dingBuffer = decoded; })
-        .catch(function () {});
-    }
+    /* --- Audio: odblokowanie po pierwszym geście (dla szumu drukarki) --- */
+    var audioUnlocked = false;
     // Odblokowanie audio przy pierwszym geście (kliknięcie/pisanie) zamiast ekranu Start
     function unlockAudio() {
       if (audioUnlocked) return;
       audioUnlocked = true;
-      ensureAudio();
-      loadSounds();
       if (typeof syncPrinterNoise === 'function') syncPrinterNoise();
-    }
-    function playClickSound() {
-      if (!audioCtx || !dingBuffer) return;
-      try {
-        if (clickSrc) { try { clickSrc.stop(); } catch (e) {} }
-        var src = audioCtx.createBufferSource();
-        src.buffer = dingBuffer;
-        var g = audioCtx.createGain();
-        g.gain.value = 0.5; // dzwonek na 50%
-        src.connect(g); g.connect(audioCtx.destination);
-        src.start();
-        clickSrc = src;
-      } catch (e) {}
-    }
-    // Dzwonek przy pisaniu — lekko ograniczony (~80 ms)
-    function playTypeSound() {
-      var now = Date.now();
-      if (now - lastTypeSound < 80) return;
-      lastTypeSound = now;
-      playClickSound();
     }
     // Dźwięk pracy drukarki (microwave-running.ogg) — gra tylko, gdy któraś drukarka drukuje,
     // i dopiero po odblokowaniu audio (gest użytkownika). Głośność 5%.
@@ -1273,7 +1239,7 @@
       const banner = document.getElementById('shop-banner');
       if (settings.banner) {
         banner.classList.remove('hidden');
-        banner.innerHTML = '<div class="flex items-center gap-3">' +
+        banner.innerHTML = '<div class="flex items-center justify-center gap-3 text-center">' +
           '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>' +
           '<p>' + esc(settings.banner) + '</p></div>';
       } else {
@@ -3662,27 +3628,13 @@
           }
         }
       });
-
-      // Dzwonek przy klikaniu przycisków/linków (100%)
-      document.addEventListener('click', function (e) {
-        if (e.target.closest && e.target.closest('[data-whistle], #pd-whistle')) return; // gwizdek gra tylko ton
-        if (e.target.closest && e.target.closest('button, a, select, [role="button"], input[type="button"], input[type="submit"]')) {
-          unlockAudio();
-          playClickSound();
-        }
-      });
-
-      // Dzwonek podczas wpisywania tekstu (lekko ograniczony), tylko strony głównej
-      document.addEventListener('input', function (e) {
-        var t = e.target;
-        if (!t || !t.tagName) return;
-        var textTypes = { text: 1, search: 1, password: 1, email: 1, number: 1, tel: 1, url: 1 };
-        var isText = t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && textTypes[t.type || 'text']);
-        if (isText) { unlockAudio(); playTypeSound(); }
-      });
     }
 
     document.addEventListener('DOMContentLoaded', function () {
+      // Odblokowanie audio przy pierwszym geście (dla dźwięku pracy drukarki)
+      var unlockOnce = function () { unlockAudio(); document.removeEventListener('pointerdown', unlockOnce); document.removeEventListener('keydown', unlockOnce); };
+      document.addEventListener('pointerdown', unlockOnce);
+      document.addEventListener('keydown', unlockOnce);
       loadCart();
       startListeners();
       setupEventDelegation();
@@ -4103,57 +4055,10 @@
               <button id="refresh-thumb-btn" type="button"
                 class="hidden mt-2 px-3 py-1.5 rounded-lg bg-accent/20 text-accent text-xs border border-accent/30 hover:bg-accent/30 transition">Odśwież miniaturkę</button>
               <div id="rot-controls" class="mt-3">
-                <label for="view-presets" class="block text-xs text-slate-500 mb-1">Widok kamery</label>
-                <select id="view-presets"
-                  class="w-full bg-base border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-accent focus:outline-none"
-                  onchange="window.__setView(this.value)">
-                  <option value="iso" selected>Izometria</option>
-                  <option value="isoHigh">Izometria wysoka</option>
-                  <option value="isoLow">Izometria niska</option>
-                  <option value="isoShallow">Izometria płytka</option>
-                  <option value="front">Przód</option>
-                  <option value="frontHigh">Przód wysoko</option>
-                  <option value="frontLow">Przód nisko</option>
-                  <option value="back">Tył</option>
-                  <option value="backLow">Tył nisko</option>
-                  <option value="left">Lewo</option>
-                  <option value="right">Prawo</option>
-                  <option value="rightFront">Prawy przód</option>
-                  <option value="leftFront">Lewy przód</option>
-                  <option value="rightBack">Prawy tył</option>
-                  <option value="leftBack">Lewy tył</option>
-                  <option value="top">Z góry</option>
-                  <option value="topFront">Z góry, przód</option>
-                  <option value="topBack">Z góry, tył</option>
-                  <option value="topLeft">Z góry, lewo</option>
-                  <option value="topRight">Z góry, prawo</option>
-                </select>
-                <label for="fov-slider" class="block text-xs text-slate-500 mt-3 mb-1">Przybliżenie (FOV <span id="fov-value">45</span>°)</label>
-                <input id="fov-slider" type="range" min="15" max="75" step="1" value="45"
+                <label for="anim-y-slider" class="block text-xs text-slate-500 mt-3 mb-1">Obrót początkowy Y (<span id="anim-y-value">0</span>°)</label>
+                <input id="anim-y-slider" type="range" min="-180" max="180" step="5" value="0"
                   class="w-full accent-accent cursor-pointer"
-                  oninput="window.__setFov(this.value)" />
-                <label for="size-slider" class="block text-xs text-slate-500 mt-3 mb-1">Wielkość modelu (<span id="size-value">100</span>%)</label>
-                <input id="size-slider" type="range" min="40" max="200" step="5" value="100"
-                  class="w-full accent-accent cursor-pointer"
-                  oninput="window.__setSize(this.value)" />
-                <label class="flex items-center gap-2 mt-3 cursor-pointer">
-                  <input id="auto-center-toggle" type="checkbox" checked class="accent-accent" />
-                  <span class="text-xs text-slate-500">Auto wyśrodkowanie</span>
-                </label>
-                <label for="center-x" class="block text-xs text-slate-500 mt-3 mb-1">Ręczne przesunięcie X (<span id="center-x-value">0</span>%)</label>
-                <input id="center-x" type="range" min="-100" max="100" step="1" value="0"
-                  class="w-full accent-accent cursor-pointer"
-                  oninput="window.__setCenter('x', this.value)" />
-                <label for="center-y" class="block text-xs text-slate-500 mt-3 mb-1">Ręczne przesunięcie Y (<span id="center-y-value">0</span>%)</label>
-                <input id="center-y" type="range" min="-100" max="100" step="1" value="0"
-                  class="w-full accent-accent cursor-pointer"
-                  oninput="window.__setCenter('y', this.value)" />
-                <div class="flex gap-3 mt-3">
-                  <button type="button" id="reset-view-btn"
-                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Reset widoku</button>
-                  <button type="button" id="download-thumb-btn"
-                    class="flex-1 py-2 rounded-xl text-xs font-semibold bg-base border border-white/10 text-slate-300 hover:border-white/30 transition-all">Pobierz PNG</button>
-                </div>
+                  oninput="window.__setAnimY(this.value)" />
                 <div class="mt-3">
                   <button type="button" id="gen-preview-btn"
                     class="w-full py-2 rounded-xl text-xs font-semibold bg-accent/20 text-accent border border-accent/30 hover:bg-accent/30 transition-all">Generuj animację 360°</button>
@@ -4317,7 +4222,7 @@
     import * as THREE from 'three';
     import { STLLoader } from 'three/addons/loaders/STLLoader.js';
     import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-    import { GIFEncoder as GifencEncoder } from 'https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.esm.js';
+    import { GIFEncoder as GifencEncoder, quantize as gifQuantize, applyPalette as gifApplyPalette } from 'https://cdn.jsdelivr.net/npm/gifenc@1.0.3/dist/gifenc.esm.js';
 
     function bytesToArrayBuffer(bytes) {
       return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
@@ -4381,12 +4286,11 @@
       frontHigh: [0, 1.1, 1],
       isoShallow: [2, 0.5, 1]
     };
-    let currentView = 'iso';
-    let currentFov = 45;
-    let sizeFactor = 1;
-    let manualX = 0;
-    let manualY = 0;
-    let autoCenter = true;
+    // Stałe parametry kadru miniaturki (jedyna regulacja użytkownika: obrót Y animacji).
+    const currentView = 'iso';
+    const currentFov = 45;
+    const sizeFactor = 1;
+    const autoCenter = true;
     let modelColor = 0x452c1a;   // domyślny kolor modelu (czekolada)
     const COLOR_PRESETS = {
       'czekolada': 0x452c1a,
@@ -4397,6 +4301,16 @@
     const REF_FOV = 45;       // FOV odniesienia: dopasowanie kadru liczone raz w tej wartości
     let sharedRenderer = null;
     let sharedEnvTex = null;
+
+    // Obrót początkowy Y animacji 360 (stopnie) — zapisywany lokalnie.
+    let animYDeg = 0;
+    try { animYDeg = parseFloat(localStorage.getItem('maslo3d_anim_y')) || 0; } catch (e) {}
+    window.__setAnimY = function (val) {
+      animYDeg = Math.max(-180, Math.min(180, parseFloat(val) || 0));
+      var lbl = document.getElementById('anim-y-value');
+      if (lbl) lbl.textContent = Math.round(animYDeg);
+      try { localStorage.setItem('maslo3d_anim_y', String(animYDeg)); } catch (e) {}
+    };
 
     async function generateModelThumbnail(bytes, format) {
       const product = await parseProduct(bytes, format);
@@ -4473,16 +4387,7 @@
       camera.near = renderDist / 1000;
       camera.far = renderDist * 1000;
       camera.updateProjectionMatrix();
-      // Manual offset X/Y (procent kadru) - przesunięcie punktu lookAt
-      if (manualX !== 0 || manualY !== 0) {
-        const halfFrame = renderDist * Math.tan(deg2rad(currentFov) / 2);
-        const look = c2.clone()
-          .add(right.clone().multiplyScalar((manualX / 100) * halfFrame))
-          .add(upB.clone().multiplyScalar((manualY / 100) * halfFrame));
-        camera.lookAt(look);
-      } else {
-        camera.lookAt(c2);
-      }
+      camera.lookAt(c2);
 
       renderer.render(scene, camera);
 
@@ -4578,144 +4483,6 @@
     const refreshBtn = document.getElementById('refresh-thumb-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', refreshFromStored);
 
-    // Presety widoku kamery — zmiana wyboru przełącza kąt kamery i renderuje
-    function selectView(view) {
-      currentView = view;
-      refreshFromStored();
-      saveView();
-    }
-    window.__setView = function (v) { selectView(v); };
-    const viewSelect = document.getElementById('view-presets');
-    if (viewSelect) viewSelect.addEventListener('change', function () { selectView(this.value); });
-
-    // Regulacja FOV (przybliżenie) — mniejszy FOV = mocniejszy zoom
-    let fovTimer = null;
-    function setFov(val) {
-      currentFov = Math.max(15, Math.min(75, parseFloat(val) || 45));
-      const lbl = document.getElementById('fov-value');
-      if (lbl) lbl.textContent = Math.round(currentFov);
-      clearTimeout(fovTimer);
-      fovTimer = setTimeout(refreshFromStored, 200); // debounce -> mniej lagu
-      saveView();
-    }
-    window.__setFov = function (v) { setFov(v); };
-    const fovSlider = document.getElementById('fov-slider');
-    if (fovSlider) fovSlider.addEventListener('input', function () { setFov(this.value); });
-
-    // Regulacja wielkości modelu (%)
-    let sizeTimer = null;
-    function setSize(val) {
-      sizeFactor = (Math.max(40, Math.min(200, parseFloat(val) || 100))) / 100;
-      const slbl = document.getElementById('size-value');
-      if (slbl) slbl.textContent = Math.round(sizeFactor * 100);
-      clearTimeout(sizeTimer);
-      sizeTimer = setTimeout(refreshFromStored, 200); // debounce
-      saveView();
-    }
-    window.__setSize = function (v) { setSize(v); };
-    const sizeSlider = document.getElementById('size-slider');
-    if (sizeSlider) sizeSlider.addEventListener('input', function () { setSize(this.value); });
-
-    // Auto wyśrodkowanie (przełącznik)
-    const autoCenterToggle = document.getElementById('auto-center-toggle');
-    if (autoCenterToggle) autoCenterToggle.addEventListener('change', function () {
-      autoCenter = this.checked;
-      refreshFromStored();
-      saveView();
-    });
-
-    // Manualne centrowanie X/Y (przesunięcie punktu patrzenia w % kadru)
-    window.__setCenter = function (axis, val) {
-      if (axis === 'x') manualX = parseFloat(val) || 0;
-      else manualY = parseFloat(val) || 0;
-      const xLbl = document.getElementById('center-x-value');
-      const yLbl = document.getElementById('center-y-value');
-      if (xLbl) xLbl.textContent = Math.round(manualX);
-      if (yLbl) yLbl.textContent = Math.round(manualY);
-      refreshFromStored();
-      saveView();
-    };
-
-    // Zapamiętywanie ustawień widoku w localStorage
-    const VIEW_KEY = 'maslo3d_view';
-    function saveView() {
-      try {
-        const viewData = {
-          view: currentView,
-          fov: currentFov,
-          size: sizeFactor * 100,
-          manualX: manualX,
-          manualY: manualY,
-          autoCenter: autoCenter
-        };
-        localStorage.setItem(VIEW_KEY, JSON.stringify(viewData));
-      } catch (e) { /* localStorage niedostępny - ignoruj */ }
-    }
-    function loadView() {
-      try {
-        const saved = localStorage.getItem(VIEW_KEY);
-        if (!saved) return;
-        const data = JSON.parse(saved);
-        currentView = data.view || 'iso';
-        currentFov = data.fov || 45;
-        sizeFactor = (data.size || 100) / 100;
-        manualX = data.manualX || 0;
-        manualY = data.manualY || 0;
-        autoCenter = data.autoCenter !== false;
-      } catch (e) { /* uszkodzony zapis - używamy domyślnych */ }
-    }
-    function syncViewUI() {
-      const viewSelect = document.getElementById('view-presets');
-      if (viewSelect) viewSelect.value = currentView;
-      const fovSlider = document.getElementById('fov-slider');
-      if (fovSlider) fovSlider.value = Math.round(currentFov);
-      const fovLbl = document.getElementById('fov-value');
-      if (fovLbl) fovLbl.textContent = Math.round(currentFov);
-      const sizeSlider = document.getElementById('size-slider');
-      if (sizeSlider) sizeSlider.value = Math.round(sizeFactor * 100);
-      const sizeLbl = document.getElementById('size-value');
-      if (sizeLbl) sizeLbl.textContent = Math.round(sizeFactor * 100);
-      const cx = document.getElementById('center-x');
-      if (cx) cx.value = Math.round(manualX);
-      const cxLbl = document.getElementById('center-x-value');
-      if (cxLbl) cxLbl.textContent = Math.round(manualX);
-      const cy = document.getElementById('center-y');
-      if (cy) cy.value = Math.round(manualY);
-      const cyLbl = document.getElementById('center-y-value');
-      if (cyLbl) cyLbl.textContent = Math.round(manualY);
-      const toggle = document.getElementById('auto-center-toggle');
-      if (toggle) toggle.checked = autoCenter;
-    }
-
-    // Reset widoku do ustawień domyślnych
-    window.__resetView = function () {
-      currentView = 'iso';
-      currentFov = 45;
-      sizeFactor = 1;
-      manualX = 0;
-      manualY = 0;
-      autoCenter = true;
-      syncViewUI();
-      refreshFromStored();
-      saveView();
-    };
-    const resetBtn = document.getElementById('reset-view-btn');
-    if (resetBtn) resetBtn.addEventListener('click', window.__resetView);
-
-    // Pobieranie miniaturki jako PNG
-    window.__downloadThumb = function () {
-      const img = document.getElementById('product-image-preview');
-      if (!img || !img.getAttribute('src')) return;
-      const a = document.createElement('a');
-      a.href = img.src;
-      a.download = 'maslo3d_' + (currentView || 'view') + '.png';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    };
-    const dlBtn = document.getElementById('download-thumb-btn');
-    if (dlBtn) dlBtn.addEventListener('click', window.__downloadThumb);
-
     // Ustawianie koloru modelu (preset) i ponowne wygenerowanie miniaturki
     window.__setModelColor = function (key, silent) {
       if (COLOR_PRESETS.hasOwnProperty(key)) modelColor = COLOR_PRESETS[key];
@@ -4733,9 +4500,13 @@
       b.addEventListener('click', function () { window.__setModelColor(this.dataset.modelColor); });
     });
 
-    loadView();
-    syncViewUI();
-    saveView();
+    // Synchronizuj suwak obrotu Y animacji z zapisem lokalnym.
+    (function () {
+      var s = document.getElementById('anim-y-slider');
+      if (s) s.value = Math.round(animYDeg);
+      var lbl = document.getElementById('anim-y-value');
+      if (lbl) lbl.textContent = Math.round(animYDeg);
+    })();
 
     // Generuje animowany GIF (pełna orbita 360°) -> Base122 do #product-preview-data.
     // FPS i ramki ograniczają rozmiar (cel ≤ ~1 MB); render po stronie admina raz.
@@ -4816,7 +4587,7 @@
       const encoder = new GifencEncoder();
       let globalPalette = null;
       for (let f = 0; f < frames; f++) {
-        const a = f * angleStep;
+        const a = deg2rad(animYDeg) + f * angleStep;
         const dir = new THREE.Vector3(Math.sin(a), elevation, Math.cos(a)).normalize();
         camera.position.copy(c2).add(dir.multiplyScalar(renderDist));
         camera.lookAt(c2);
@@ -4825,9 +4596,9 @@
         const px = cctx.getImageData(0, 0, W, H).data;
         raw.set(px);
         if (f === 0) {
-          globalPalette = quantize(raw, 256, { format: 'rgb565', clearAlpha: true, clearAlphaThreshold: 0 });
+          globalPalette = gifQuantize(raw, 256, { format: 'rgb565', clearAlpha: true, clearAlphaThreshold: 0 });
         }
-        const idx = applyPalette(raw, globalPalette, 'rgb565');
+        const idx = gifApplyPalette(raw, globalPalette, 'rgb565');
         const frameOpts = { delay: Math.round(1000 / fps), repeat: 0 };
         if (f === 0) frameOpts.palette = globalPalette; // paleta tylko w 1. klatce (globalna)
         encoder.writeFrame(idx, W, H, frameOpts);
